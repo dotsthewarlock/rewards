@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#111827">
+<title>Mobile Barcode Scanner</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#111827;--panel2:#172033;--line:#27344d;--text:#f8fafc;--muted:#9fb0c8;--green:#20c67a;--green2:#12945a;--red:#ef5b5b;--amber:#f5b84b;--blue:#60a5fa;--radius:16px;--shadow:0 16px 50px rgba(0,0,0,.34)}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+body{min-height:100dvh}
+button,input,select{font:inherit}
+button{touch-action:manipulation}
+.app{width:min(100%,760px);margin:0 auto;min-height:100dvh;padding:env(safe-area-inset-top) 14px calc(18px + env(safe-area-inset-bottom))}
+.header{height:58px;display:flex;align-items:center;gap:10px}
+.title{font-weight:800;font-size:19px;letter-spacing:.1px;flex:1}
+.count{min-width:42px;height:34px;padding:0 11px;border-radius:999px;background:#1d2a40;display:grid;place-items:center;font-weight:800;color:#dbeafe}
+.icon-btn{width:42px;height:42px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;font-weight:800;font-size:19px}
+.camera-card{position:relative;overflow:hidden;background:#05080e;border:1px solid var(--line);border-radius:18px;aspect-ratio:4/3;box-shadow:var(--shadow)}
+video{width:100%;height:100%;object-fit:cover;background:#05080e}
+.camera-off{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:30px;background:radial-gradient(circle at 50% 40%,#172033,#080c15 70%);color:var(--muted)}
+.camera-off strong{display:block;color:var(--text);font-size:19px;margin-bottom:7px}
+.scan-guide{position:absolute;left:9%;right:9%;top:34%;height:32%;border:2px solid rgba(255,255,255,.75);border-radius:16px;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.17) inset}
+.scan-guide:before,.scan-guide:after{content:"";position:absolute;left:8%;right:8%;height:2px;background:rgba(32,198,122,.85);top:50%;box-shadow:0 0 14px rgba(32,198,122,.7)}
+.status-strip{display:flex;align-items:center;gap:9px;padding:10px 2px 2px;color:var(--muted);font-size:13px;min-height:34px}
+.dot{width:9px;height:9px;border-radius:50%;background:#64748b;flex:0 0 auto}.dot.live{background:var(--green);box-shadow:0 0 0 4px rgba(32,198,122,.12)}.dot.warn{background:var(--amber)}.dot.bad{background:var(--red)}
+.primary{width:100%;margin-top:10px;height:52px;border:0;border-radius:14px;background:var(--green);color:#062516;font-weight:900;font-size:16px}.primary.stop{background:#243044;color:#f8fafc;border:1px solid #34425d}
+.list-card{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.list-head{height:48px;padding:0 14px;display:flex;align-items:center;border-bottom:1px solid var(--line);font-size:14px;font-weight:800}.list-head span:last-child{margin-left:auto;color:var(--muted);font-weight:650}
+.code-list{min-height:150px;max-height:35dvh;overflow:auto}
+.empty{padding:42px 18px;text-align:center;color:var(--muted);font-size:14px}
+.code-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid rgba(39,52,77,.7)}.code-row:last-child{border-bottom:0}
+.idx{width:28px;text-align:right;color:#72829c;font-size:12px;font-variant-numeric:tabular-nums}.code{flex:1;min-width:0;overflow-wrap:anywhere;font:600 15px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.delete{width:38px;height:38px;border:0;border-radius:10px;background:#1b2538;color:#aebdd2;font-size:20px}
+.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:12px}.secondary{height:47px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:13px;font-weight:800}.secondary.danger{color:#ffb5b5}
+.note{font-size:11px;line-height:1.45;color:#6f819c;text-align:center;padding:11px 4px 0}
+.overlay{position:fixed;inset:0;background:rgba(2,6,15,.72);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}.overlay.show{display:flex}
+.modal{width:min(100%,470px);max-height:88dvh;overflow:auto;background:var(--panel);border:1px solid #32415e;border-radius:20px;box-shadow:var(--shadow)}
+.modal-head{display:flex;align-items:center;padding:17px 18px 12px}.modal-head h2{font-size:18px;margin:0;flex:1}.close{width:38px;height:38px;border:0;border-radius:10px;background:#1a2538;color:#cbd5e1;font-size:23px}
+.modal-body{padding:0 18px 18px}
+.detected-label{text-align:center;color:var(--muted);font-size:13px;margin-top:5px}.detected-code{text-align:center;font:800 20px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere;padding:18px 8px 6px}.detected-format{text-align:center;color:var(--blue);font-size:12px;text-transform:uppercase;letter-spacing:.8px}.countdown{text-align:center;color:var(--muted);font-size:13px;min-height:21px;margin:10px 0}.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.retry,.accept,.cancel,.confirm-danger{height:50px;border-radius:13px;font-weight:900}.retry,.cancel{border:1px solid #4a2d38;background:#321b24;color:#ffc3cb}.accept{border:0;background:var(--green);color:#062516}.confirm-danger{border:0;background:var(--red);color:#fff}
+.section{padding:13px 0 4px;border-top:1px solid var(--line)}.section:first-child{border-top:0;padding-top:0}.section-title{font-size:11px;letter-spacing:.9px;color:#7f91aa;font-weight:900;margin:2px 0 8px}
+.setting{display:flex;align-items:center;gap:12px;padding:10px 1px}.setting-text{flex:1}.setting-name{font-size:14px;font-weight:750}.setting-desc{font-size:12px;color:var(--muted);line-height:1.35;margin-top:3px}
+.switch{position:relative;width:48px;height:28px;flex:0 0 auto}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;border-radius:999px;background:#344057;transition:.16s}.slider:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:white;transition:.16s}.switch input:checked+.slider{background:var(--green2)}.switch input:checked+.slider:before{transform:translateX(20px)}
+.select{width:100%;height:44px;border-radius:11px;border:1px solid var(--line);background:#0e1626;color:var(--text);padding:0 11px;margin:5px 0 8px}
+.debug{background:#0d1523;border:1px solid #26344b;border-radius:13px;padding:10px 12px;margin-top:8px}.debug-row{display:flex;gap:12px;padding:5px 0;font-size:12px}.debug-row span:first-child{color:var(--muted);min-width:116px}.debug-row span:last-child{margin-left:auto;text-align:right;overflow-wrap:anywhere}.settings-danger{width:100%;height:45px;border:1px solid #5b2c35;background:#25161c;color:#ffc0c7;border-radius:12px;font-weight:850;margin-top:9px}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#eef2ff;color:#111827;padding:10px 14px;border-radius:999px;font-size:13px;font-weight:800;opacity:0;pointer-events:none;transition:.2s;z-index:90;box-shadow:var(--shadow)}.toast.show{opacity:1;transform:translate(-50%,0)}
+.warning{padding:10px 12px;border-radius:12px;background:#2d2312;border:1px solid #5d4820;color:#ffd88d;font-size:12px;line-height:1.45;margin-bottom:10px;display:none}.warning.show{display:block}
+@media(min-width:620px){.app{padding-left:20px;padding-right:20px}.camera-card{aspect-ratio:16/10}.code-list{max-height:310px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="header">
+    <div class="title">Barcode Scanner</div>
+    <div class="count" id="count">0</div>
+    <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings">&#9776;</button>
+  </header>
+
+  <section class="camera-card" aria-label="Camera preview">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="scan-guide" id="scanGuide" hidden></div>
+    <div class="camera-off" id="cameraOff"><div><strong>Camera is off</strong>Tap Start Scanner to enable the rear camera.</div></div>
+  </section>
+  <div class="status-strip"><span class="dot" id="statusDot"></span><span id="statusText">Ready</span></div>
+  <button class="primary" id="scanToggle" type="button">Start Scanner</button>
+
+  <section class="list-card">
+    <div class="list-head"><span>Scanned codes</span><span id="listCount">0 items</span></div>
+    <div class="code-list" id="codeList"><div class="empty">Accepted codes will appear here.</div></div>
+  </section>
+
+  <div class="actions">
+    <button class="secondary" id="copyBtn" type="button">Copy</button>
+    <button class="secondary" id="csvBtn" type="button">CSV</button>
+    <button class="secondary danger" id="clearBtn" type="button">Clear</button>
+  </div>
+  <div class="note">Scans stay on this device. Camera access requires HTTPS or localhost.</div>
+</main>
+
+<div class="overlay" id="scanModal" role="dialog" aria-modal="true" aria-labelledby="scanModalTitle">
+  <div class="modal">
+    <div class="modal-head"><h2 id="scanModalTitle">Barcode detected</h2></div>
+    <div class="modal-body">
+      <div class="detected-label" id="detectedLabel">Detected code</div>
+      <div class="detected-code" id="detectedCode"></div>
+      <div class="detected-format" id="detectedFormat"></div>
+      <div class="countdown" id="countdown"></div>
+      <div class="modal-actions" id="scanModalActions">
+        <button class="retry" id="retryBtn" type="button">Retry</button>
+        <button class="accept" id="acceptBtn" type="button">Accept</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modal">
+    <div class="modal-head"><h2 id="settingsTitle">Settings &amp; Debug</h2><button class="close" id="settingsClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="warning" id="secureWarning">Camera access is unavailable in an insecure context. Host this file over HTTPS or localhost.</div>
+      <div class="section">
+        <div class="section-title">BEHAVIOR</div>
+        <div class="setting"><div class="setting-text"><div class="setting-name">Auto accept</div><div class="setting-desc">Accept a detected code after 0.5 seconds unless Retry is tapped.</div></div><label class="switch"><input id="autoAccept" type="checkbox"><span class="slider"></span></label></div>
+        <div class="setting"><div class="setting-text"><div class="setting-name">Beep</div><div class="setting-desc">Play a short tone when a barcode is recognized.</div></div><label class="switch"><input id="beepEnabled" type="checkbox"><span class="slider"></span></label></div>
+        <div class="setting"><div class="setting-text"><div class="setting-name">Ignore codes already in list</div><div class="setting-desc">Keep the holding list unique across the current scan session.</div></div><label class="switch"><input id="ignoreListDuplicates" type="checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div class="section">
+        <div class="section-title">STORAGE</div>
+        <div class="setting"><div class="setting-text"><div class="setting-name">Preserve scans on refresh</div><div class="setting-desc">Use session storage so an accidental refresh does not lose scans. Closing the browser session clears them.</div></div><label class="switch"><input id="preserveRefresh" type="checkbox"><span class="slider"></span></label></div>
+        <button class="settings-danger" id="clearCacheBtn" type="button">Clear scan cache</button>
+      </div>
+      <div class="section">
+        <div class="section-title">SCANNER</div>
+        <label class="setting-name" for="engineSelect">Scanner engine</label>
+        <select class="select" id="engineSelect">
+          <option value="auto">Auto</option>
+          <option value="native">Native BarcodeDetector</option>
+          <option value="zxing">ZXing fallback</option>
+        </select>
+        <div class="setting"><div class="setting-text"><div class="setting-name">Ignore immediate repeat scans</div><div class="setting-desc">Suppress rapid repeated detections of the same physical barcode.</div></div><label class="switch"><input id="ignoreImmediate" type="checkbox"><span class="slider"></span></label></div>
+        <div class="debug">
+          <div class="debug-row"><span>App version</span><span>0.1.0</span></div>
+          <div class="debug-row"><span>Active engine</span><span id="dbgEngine">None</span></div>
+          <div class="debug-row"><span>Native API</span><span id="dbgNative">Checking</span></div>
+          <div class="debug-row"><span>ZXing loaded</span><span id="dbgZxing">No</span></div>
+          <div class="debug-row"><span>Secure context</span><span id="dbgSecure">Checking</span></div>
+          <div class="debug-row"><span>Last format</span><span id="dbgFormat">-</span></div>
+          <div class="debug-row"><span>Last decode</span><span id="dbgDecode">-</span></div>
+          <div class="debug-row"><span>Last error</span><span id="dbgError">-</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="modal">
+    <div class="modal-head"><h2 id="confirmTitle">Clear scanned codes?</h2></div>
+    <div class="modal-body">
+      <div style="color:var(--muted);font-size:14px;line-height:1.5" id="confirmText">This removes all currently stored scanned codes.</div>
+      <div class="modal-actions">
+        <button class="cancel" id="confirmCancel" type="button">Cancel</button>
+        <button class="confirm-danger" id="confirmClear" type="button">Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const APP_VERSION = '0.1.0';
+  const ZXING_URLS = [
+    'https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js',
+    'https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js'
+  ];
+  const SESSION_KEY = 'mobileBarcodeScanner.codes.v1';
+  const PREF_KEY = 'mobileBarcodeScanner.prefs.v1';
+  const DEFAULT_PREFS = {
+    autoAccept: true,
+    beepEnabled: true,
+    ignoreListDuplicates: true,
+    preserveRefresh: true,
+    ignoreImmediate: true,
+    engine: 'auto'
+  };
+
+  const el = id => document.getElementById(id);
+  const ui = {
+    video: el('video'), cameraOff: el('cameraOff'), scanGuide: el('scanGuide'), statusDot: el('statusDot'), statusText: el('statusText'),
+    scanToggle: el('scanToggle'), count: el('count'), listCount: el('listCount'), codeList: el('codeList'), copyBtn: el('copyBtn'), csvBtn: el('csvBtn'), clearBtn: el('clearBtn'),
+    settingsBtn: el('settingsBtn'), settingsModal: el('settingsModal'), settingsClose: el('settingsClose'), secureWarning: el('secureWarning'),
+    autoAccept: el('autoAccept'), beepEnabled: el('beepEnabled'), ignoreListDuplicates: el('ignoreListDuplicates'), preserveRefresh: el('preserveRefresh'), ignoreImmediate: el('ignoreImmediate'), engineSelect: el('engineSelect'), clearCacheBtn: el('clearCacheBtn'),
+    dbgEngine: el('dbgEngine'), dbgNative: el('dbgNative'), dbgZxing: el('dbgZxing'), dbgSecure: el('dbgSecure'), dbgFormat: el('dbgFormat'), dbgDecode: el('dbgDecode'), dbgError: el('dbgError'),
+    scanModal: el('scanModal'), scanModalTitle: el('scanModalTitle'), detectedLabel: el('detectedLabel'), detectedCode: el('detectedCode'), detectedFormat: el('detectedFormat'), countdown: el('countdown'), scanModalActions: el('scanModalActions'), retryBtn: el('retryBtn'), acceptBtn: el('acceptBtn'),
+    confirmModal: el('confirmModal'), confirmTitle: el('confirmTitle'), confirmText: el('confirmText'), confirmCancel: el('confirmCancel'), confirmClear: el('confirmClear'), toast: el('toast')
+  };
+
+  let prefs = loadPrefs();
+  let codes = loadCodes();
+  let scanning = false;
+  let scanLocked = false;
+  let pending = null;
+  let acceptTimer = null;
+  let autoInterval = null;
+  let nativeStream = null;
+  let nativeDetector = null;
+  let nativeLoopToken = 0;
+  let zxingReader = null;
+  let zxingControls = null;
+  let activeEngine = 'None';
+  let audioCtx = null;
+  let toastTimer = null;
+  let confirmAction = null;
+  let lastSeenCode = '';
+  let lastSeenAt = 0;
+  let lastNativeTick = 0;
+  let nativeBusy = false;
+
+  function loadPrefs() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+      return { ...DEFAULT_PREFS, ...stored };
+    } catch (_) { return { ...DEFAULT_PREFS }; }
+  }
+
+  function savePrefs() {
+    try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function loadCodes() {
+    if (!prefs.preserveRefresh) return [];
+    try {
+      const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || '[]');
+      return Array.isArray(value) ? value.filter(v => typeof v === 'string') : [];
+    } catch (_) { return []; }
+  }
+
+  function saveCodes() {
+    try {
+      if (prefs.preserveRefresh) sessionStorage.setItem(SESSION_KEY, JSON.stringify(codes));
+      else sessionStorage.removeItem(SESSION_KEY);
+    } catch (_) {}
+  }
+
+  function setStatus(text, kind = '') {
+    ui.statusText.textContent = text;
+    ui.statusDot.className = 'dot' + (kind ? ' ' + kind : '');
+  }
+
+  function setError(message) {
+    ui.dbgError.textContent = message || '-';
+  }
+
+  function updateDebug() {
+    ui.dbgEngine.textContent = activeEngine;
+    ui.dbgNative.textContent = ('BarcodeDetector' in window) ? 'Available' : 'Unavailable';
+    ui.dbgZxing.textContent = window.ZXingBrowser ? 'Yes' : 'No';
+    ui.dbgSecure.textContent = window.isSecureContext ? 'Yes' : 'No';
+    ui.secureWarning.classList.toggle('show', !window.isSecureContext || !navigator.mediaDevices?.getUserMedia);
+  }
+
+  function renderCodes() {
+    ui.count.textContent = String(codes.length);
+    ui.listCount.textContent = codes.length + (codes.length === 1 ? ' item' : ' items');
+    if (!codes.length) {
+      ui.codeList.innerHTML = '<div class="empty">Accepted codes will appear here.</div>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    codes.forEach((code, i) => {
+      const row = document.createElement('div'); row.className = 'code-row';
+      const idx = document.createElement('div'); idx.className = 'idx'; idx.textContent = String(i + 1);
+      const text = document.createElement('div'); text.className = 'code'; text.textContent = code;
+      const del = document.createElement('button'); del.className = 'delete'; del.type = 'button'; del.setAttribute('aria-label', 'Delete ' + code); del.innerHTML = '&times;';
+      del.addEventListener('click', () => { codes.splice(i, 1); saveCodes(); renderCodes(); });
+      row.append(idx, text, del); frag.append(row);
+    });
+    ui.codeList.replaceChildren(frag);
+    ui.codeList.scrollTop = ui.codeList.scrollHeight;
+  }
+
+  function syncSettingsUI() {
+    ui.autoAccept.checked = prefs.autoAccept;
+    ui.beepEnabled.checked = prefs.beepEnabled;
+    ui.ignoreListDuplicates.checked = prefs.ignoreListDuplicates;
+    ui.preserveRefresh.checked = prefs.preserveRefresh;
+    ui.ignoreImmediate.checked = prefs.ignoreImmediate;
+    ui.engineSelect.value = prefs.engine;
+    updateDebug();
+  }
+
+  function showToast(message) {
+    clearTimeout(toastTimer);
+    ui.toast.textContent = message;
+    ui.toast.classList.add('show');
+    toastTimer = setTimeout(() => ui.toast.classList.remove('show'), 1500);
+  }
+
+  async function primeAudio() {
+    if (!prefs.beepEnabled) return;
+    try {
+      audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+    } catch (_) {}
+  }
+
+  async function beep(freq = 880, duration = 0.075) {
+    if (!prefs.beepEnabled) return;
+    try {
+      audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = freq; osc.type = 'sine';
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.connect(gain).connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration + 0.01);
+    } catch (_) {}
+  }
+
+  function immediateDuplicate(code) {
+    const now = performance.now();
+    const duplicate = prefs.ignoreImmediate && code === lastSeenCode && (now - lastSeenAt) < 1600;
+    lastSeenCode = code; lastSeenAt = now;
+    return duplicate;
+  }
+
+  function processCandidate(code, format = '', decodeMs = null) {
+    code = String(code || '').trim();
+    if (!code || scanLocked) return;
+    if (immediateDuplicate(code)) return;
+    scanLocked = true;
+    pending = { code, format: format || 'Unknown' };
+    ui.dbgFormat.textContent = pending.format;
+    ui.dbgDecode.textContent = decodeMs == null ? '-' : Math.max(0, Math.round(decodeMs)) + ' ms';
+    beep();
+
+    if (prefs.ignoreListDuplicates && codes.includes(code)) {
+      showDuplicateModal(code, pending.format);
+      return;
+    }
+    showScanModal();
+  }
+
+  function showDuplicateModal(code, format) {
+    clearAcceptTimers();
+    ui.scanModalTitle.textContent = 'Already scanned';
+    ui.detectedLabel.textContent = 'Ignored duplicate';
+    ui.detectedCode.textContent = code;
+    ui.detectedFormat.textContent = format;
+    ui.countdown.textContent = 'This code is already in the holding list.';
+    ui.scanModalActions.style.display = 'none';
+    ui.scanModal.classList.add('show');
+    acceptTimer = setTimeout(() => closeScanModal(true), 700);
+  }
+
+  function showScanModal() {
+    clearAcceptTimers();
+    ui.scanModalTitle.textContent = 'Barcode detected';
+    ui.detectedLabel.textContent = 'Detected code';
+    ui.detectedCode.textContent = pending.code;
+    ui.detectedFormat.textContent = pending.format;
+    ui.scanModalActions.style.display = 'grid';
+    ui.scanModal.classList.add('show');
+    if (prefs.autoAccept) {
+      const started = performance.now();
+      const refresh = () => {
+        const left = Math.max(0, 500 - (performance.now() - started));
+        ui.countdown.textContent = 'Auto accepting in ' + (left / 1000).toFixed(1) + 's';
+      };
+      refresh(); autoInterval = setInterval(refresh, 50);
+      acceptTimer = setTimeout(acceptPending, 500);
+    } else {
+      ui.countdown.textContent = 'Review the code before accepting.';
+    }
+  }
+
+  function clearAcceptTimers() {
+    clearTimeout(acceptTimer); clearInterval(autoInterval); acceptTimer = null; autoInterval = null;
+  }
+
+  function acceptPending() {
+    if (!pending) return;
+    clearAcceptTimers();
+    const value = pending.code;
+    if (!(prefs.ignoreListDuplicates && codes.includes(value))) {
+      codes.push(value); saveCodes(); renderCodes();
+    }
+    closeScanModal(true);
+  }
+
+  function closeScanModal(rearm = true) {
+    clearAcceptTimers();
+    ui.scanModal.classList.remove('show');
+    ui.scanModalActions.style.display = 'grid';
+    pending = null;
+    if (rearm) setTimeout(() => { scanLocked = false; }, 180);
+  }
+
+  function retryPending() { closeScanModal(true); }
+
+  async function loadZXing() {
+    if (window.ZXingBrowser) { updateDebug(); return; }
+    let lastError = null;
+    for (const src of ZXING_URLS) {
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = src; s.async = true; s.crossOrigin = 'anonymous';
+          s.onload = resolve; s.onerror = () => reject(new Error('Failed to load ' + src));
+          document.head.appendChild(s);
+        });
+        if (window.ZXingBrowser) { updateDebug(); return; }
+      } catch (err) { lastError = err; }
+    }
+    throw lastError || new Error('ZXing could not be loaded.');
+  }
+
+  async function nativeSupportedFormats() {
+    if (!('BarcodeDetector' in window)) return [];
+    try { return await BarcodeDetector.getSupportedFormats(); } catch (_) { return []; }
+  }
+
+  async function chooseEngine() {
+    if (prefs.engine === 'zxing') return 'zxing';
+    if (prefs.engine === 'native') {
+      if (!('BarcodeDetector' in window)) throw new Error('Native BarcodeDetector is not available in this browser.');
+      return 'native';
+    }
+    if ('BarcodeDetector' in window) {
+      const formats = await nativeSupportedFormats();
+      const useful = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'];
+      if (formats.some(f => useful.includes(f))) return 'native';
+    }
+    return 'zxing';
+  }
+
+  function mediaConstraints() {
+    return {
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+  }
+
+  async function startNative() {
+    const formats = await nativeSupportedFormats();
+    const wanted = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','codabar','itf','qr_code','data_matrix','pdf417'];
+    const selected = wanted.filter(f => formats.includes(f));
+    nativeDetector = selected.length ? new BarcodeDetector({ formats: selected }) : new BarcodeDetector();
+    nativeStream = await navigator.mediaDevices.getUserMedia(mediaConstraints());
+    ui.video.srcObject = nativeStream;
+    await ui.video.play();
+    activeEngine = 'Native BarcodeDetector';
+    updateDebug();
+    const token = ++nativeLoopToken;
+    const loop = async ts => {
+      if (!scanning || token !== nativeLoopToken) return;
+      if (!nativeBusy && !scanLocked && ui.video.readyState >= 2 && ts - lastNativeTick >= 130) {
+        lastNativeTick = ts; nativeBusy = true;
+        const started = performance.now();
+        try {
+          const results = await nativeDetector.detect(ui.video);
+          if (results && results.length) processCandidate(results[0].rawValue, results[0].format, performance.now() - started);
+        } catch (err) {
+          setError(err.message || String(err));
+        } finally { nativeBusy = false; }
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  async function startZXing() {
+    await loadZXing();
+    zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    activeEngine = 'ZXing'; updateDebug();
+    zxingControls = await zxingReader.decodeFromConstraints(mediaConstraints(), ui.video, (result, error) => {
+      if (!scanning || scanLocked) return;
+      if (result) {
+        let format = 'Unknown';
+        try {
+          const rawFormat = result.getBarcodeFormat ? result.getBarcodeFormat() : result.format;
+          format = (window.ZXingBrowser && window.ZXingBrowser.BarcodeFormat && window.ZXingBrowser.BarcodeFormat[rawFormat]) || String(rawFormat || 'Unknown');
+        } catch (_) {}
+        const text = result.getText ? result.getText() : result.text;
+        processCandidate(text, format, null);
+      } else if (error) {
+        const name = error.name || error.constructor?.name || '';
+        if (!/NotFound/i.test(name)) setError(error.message || name || String(error));
+      }
+    });
+  }
+
+  async function startScanner() {
+    if (scanning) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus('Camera requires HTTPS or localhost', 'bad'); setError('getUserMedia unavailable'); updateDebug(); return;
+    }
+    scanning = true; scanLocked = false; setError('-');
+    await primeAudio();
+    ui.scanToggle.disabled = true; setStatus('Starting camera...', 'warn');
+    try {
+      const chosen = await chooseEngine();
+      if (chosen === 'native') {
+        try { await startNative(); }
+        catch (nativeErr) {
+          if (prefs.engine === 'native') throw nativeErr;
+          setError('Native failed; fallback used: ' + (nativeErr.message || nativeErr));
+          await stopCameraResources(false);
+          scanning = true;
+          await startZXing();
+        }
+      } else {
+        await startZXing();
+      }
+      ui.cameraOff.style.display = 'none'; ui.scanGuide.hidden = false;
+      ui.scanToggle.textContent = 'Stop Scanner'; ui.scanToggle.classList.add('stop');
+      setStatus('Scanning - ' + activeEngine, 'live');
+    } catch (err) {
+      scanning = false; activeEngine = 'None';
+      setError(err.message || String(err));
+      const message = err.name === 'NotAllowedError' ? 'Camera permission denied' : (err.message || 'Could not start scanner');
+      setStatus(message, 'bad');
+      await stopCameraResources(false);
+    } finally {
+      ui.scanToggle.disabled = false; updateDebug();
+    }
+  }
+
+  async function stopCameraResources(updateUi = true) {
+    nativeLoopToken++; nativeBusy = false;
+    if (zxingControls) { try { zxingControls.stop(); } catch (_) {} zxingControls = null; }
+    if (zxingReader) { try { zxingReader.reset?.(); } catch (_) {} zxingReader = null; }
+    if (nativeStream) { nativeStream.getTracks().forEach(t => t.stop()); nativeStream = null; }
+    if (ui.video.srcObject) {
+      try { ui.video.srcObject.getTracks?.().forEach(t => t.stop()); } catch (_) {}
+      ui.video.srcObject = null;
+    }
+    nativeDetector = null;
+    if (updateUi) {
+      activeEngine = 'None'; updateDebug();
+      ui.cameraOff.style.display = 'grid'; ui.scanGuide.hidden = true;
+      ui.scanToggle.textContent = 'Start Scanner'; ui.scanToggle.classList.remove('stop');
+      setStatus('Ready');
+    }
+  }
+
+  async function stopScanner() {
+    scanning = false; scanLocked = false; closeScanModal(false);
+    await stopCameraResources(true);
+  }
+
+  async function restartScannerIfRunning() {
+    if (!scanning) return;
+    await stopScanner();
+    await startScanner();
+  }
+
+  function openSettings() { syncSettingsUI(); ui.settingsModal.classList.add('show'); }
+  function closeSettings() { ui.settingsModal.classList.remove('show'); }
+
+  function askClear(source = 'list') {
+    ui.confirmTitle.textContent = source === 'cache' ? 'Clear scan cache?' : 'Clear scanned codes?';
+    ui.confirmText.textContent = 'This removes all currently stored scanned codes from this session. Scanner preferences are kept.';
+    confirmAction = () => {
+      codes = []; saveCodes();
+      try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+      renderCodes(); showToast('Scans cleared');
+    };
+    ui.confirmModal.classList.add('show');
+  }
+
+  async function copyCodes() {
+    if (!codes.length) { showToast('Nothing to copy'); return; }
+    const text = codes.join('\n');
+    try {
+      await navigator.clipboard.writeText(text); showToast('Copied ' + codes.length + ' code' + (codes.length === 1 ? '' : 's'));
+    } catch (_) {
+      const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('Copied ' + codes.length + ' codes'); } catch (err) { showToast('Copy failed'); }
+      ta.remove();
+    }
+  }
+
+  function csvCell(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }
+  function exportCsv() {
+    if (!codes.length) { showToast('Nothing to export'); return; }
+    const csv = codes.map(csvCell).join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    const stamp = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('') + '-' + [String(d.getHours()).padStart(2,'0'), String(d.getMinutes()).padStart(2,'0'), String(d.getSeconds()).padStart(2,'0')].join('');
+    a.href = url; a.download = 'scanned-codes-' + stamp + '.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('CSV exported');
+  }
+
+  function bindSetting(input, key, after) {
+    input.addEventListener('change', async () => {
+      prefs[key] = input.type === 'checkbox' ? input.checked : input.value;
+      savePrefs();
+      if (after) await after();
+    });
+  }
+
+  ui.scanToggle.addEventListener('click', () => scanning ? stopScanner() : startScanner());
+  ui.settingsBtn.addEventListener('click', openSettings);
+  ui.settingsClose.addEventListener('click', closeSettings);
+  ui.settingsModal.addEventListener('click', e => { if (e.target === ui.settingsModal) closeSettings(); });
+  ui.retryBtn.addEventListener('click', retryPending);
+  ui.acceptBtn.addEventListener('click', acceptPending);
+  ui.copyBtn.addEventListener('click', copyCodes);
+  ui.csvBtn.addEventListener('click', exportCsv);
+  ui.clearBtn.addEventListener('click', () => askClear('list'));
+  ui.clearCacheBtn.addEventListener('click', () => askClear('cache'));
+  ui.confirmCancel.addEventListener('click', () => { confirmAction = null; ui.confirmModal.classList.remove('show'); });
+  ui.confirmClear.addEventListener('click', () => { const action = confirmAction; confirmAction = null; ui.confirmModal.classList.remove('show'); if (action) action(); });
+  ui.confirmModal.addEventListener('click', e => { if (e.target === ui.confirmModal) { confirmAction = null; ui.confirmModal.classList.remove('show'); } });
+
+  bindSetting(ui.autoAccept, 'autoAccept');
+  bindSetting(ui.beepEnabled, 'beepEnabled');
+  bindSetting(ui.ignoreListDuplicates, 'ignoreListDuplicates');
+  bindSetting(ui.ignoreImmediate, 'ignoreImmediate');
+  bindSetting(ui.preserveRefresh, 'preserveRefresh', async () => { if (!prefs.preserveRefresh) { try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {} } else saveCodes(); });
+  ui.engineSelect.addEventListener('change', async () => { prefs.engine = ui.engineSelect.value; savePrefs(); await restartScannerIfRunning(); });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && prefs.preserveRefresh) saveCodes();
+  });
+  window.addEventListener('pagehide', saveCodes);
+
+  syncSettingsUI(); renderCodes(); updateDebug();
+  if (!window.isSecureContext) setStatus('Host over HTTPS to use camera', 'warn');
+  console.info('Mobile Barcode Scanner v' + APP_VERSION);
+})();
+</script>
+</body>
+</html>
