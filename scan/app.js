@@ -1,12 +1,12 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.2.0';
+  const APP_VERSION = '0.2.3';
   const SESSION_KEY = 'mobileBarcodeScanner.codes.v1';
   const PREF_KEY = 'mobileBarcodeScanner.prefs.v1';
   const DEFAULT_PREFS = {
     autoAccept: true,
-    autoAcceptDelay: 1000,
+    autoAcceptDelay: 2000,
     beepEnabled: true,
     ignoreListDuplicates: true,
     preserveRefresh: true,
@@ -92,7 +92,7 @@
   function normalizePrefs(raw) {
     const next = { ...DEFAULT_PREFS, ...raw };
     const delay = Number(next.autoAcceptDelay);
-    next.autoAcceptDelay = Number.isFinite(delay) ? Math.min(2000, Math.max(0, Math.round(delay / 200) * 200)) : 1000;
+    next.autoAcceptDelay = Number.isFinite(delay) ? Math.min(4000, Math.max(0, Math.round(delay / 400) * 400)) : 2000;
     return next;
   }
 
