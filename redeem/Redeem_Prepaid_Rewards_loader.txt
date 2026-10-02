@@ -1,0 +1,1 @@
+javascript:(async()=>{try{let r=await fetch('https://dotsthewarlock.github.io/rewards/redeem/Redeem_Prepaid_Rewards.js',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);let t=(await r.text()).trim().replace(/^javascript\s*:/i,'');t=t.replace(/\x2527/gi,"'").replace(/\x2560/gi,'`');(0,eval)(t)}catch(e){alert('Loader failed:\n'+e.message);console.error(e)}})();

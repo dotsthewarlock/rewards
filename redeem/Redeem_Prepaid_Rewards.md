@@ -1,3 +1,6 @@
+# Redeem Prepaid Rewards
+
+```javascript
 (() => {
   'use strict';
 
@@ -1813,3 +1816,4 @@
   UI.mount();
   APPCTL.invoke();
 })();
+```
