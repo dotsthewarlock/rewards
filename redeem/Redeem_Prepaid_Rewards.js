@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '10';
+  const SCRIPT_VERSION = '11';
 
   /*
    * ============================================================================
@@ -10,15 +10,16 @@
    *
    * VERSION
    * -------
-   * 10
+   * 11
    *
    * PURPOSE
    * -------
    * This companion script automates the shared InComm-style rewards redemption
-   * application used by multiple promotions/domains. Version 10 also captures
+   * application used by multiple promotions/domains. Version 11 keeps the v8
+   * interaction engine semantics while retaining slug-scoped caches and captures
    * gift-card credentials from the confirmed success page before navigation.
-   * The visible branding and
-   * body[data-project] value are NOT reliable application identifiers.
+   * The visible branding and body[data-project] value are NOT reliable application
+   * identifiers.
    *
    * PAGE IDENTITY
    * -------------
@@ -134,6 +135,7 @@
   })[ch]);
   const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   const enabled = el => !!el && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  const actionable = el => visible(el) && enabled(el);
   const uid = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const extractBarcode = value => (String(value || '').match(/\b\d{30}\b/) || [])[0] || '';
 
@@ -573,23 +575,42 @@
       if (changed) QUEUE.save(slug, rows);
     },
     recover(slug) {
-      // A browser refresh/reload may leave a pre-submit item in `processing`.
-      // Requeue it. Never automatically requeue `pending` because that state is
-      // deliberately ambiguous and must be manually resolved.
+      /*
+       * Recovery rule:
+       * - `processing` is always pre-submit and can safely return to queued.
+       * - A true submitted `pending` item remains blocked.
+       * - Version 10 incorrectly marked one PRE-submit CAPTCHA timeout path as
+       *   pending. That exact known-bad state is safe to repair to queued. This
+       *   one-time behavioral repair prevents an old v10 cache from permanently
+       *   blocking the v11 workflow with "pending item must be verified".
+       */
       const active = QUEUE.active(slug);
       const rows = QUEUE.load(slug);
       let changed = false;
+      let repairedPendingId = '';
+
       for (const row of rows) {
-        if (row && row.state === 'processing') {
+        if (!row) continue;
+        if (row.state === 'processing') {
           const isSubmittedActive = active && active.id === row.id && active.phase === 'submitted';
           row.state = isSubmittedActive ? 'pending' : 'queued';
           row.note = isSubmittedActive ? 'Previous submitted state was not verified' : 'Recovered after reload';
           row.updated = Date.now();
           changed = true;
+          continue;
+        }
+
+        if (row.state === 'pending' && /CAPTCHA state could not be verified/i.test(String(row.note || ''))) {
+          row.state = 'queued';
+          row.note = 'Recovered v10 pre-submit CAPTCHA state';
+          row.updated = Date.now();
+          repairedPendingId = row.id;
+          changed = true;
         }
       }
+
       if (changed) QUEUE.save(slug, rows);
-      if (active && active.phase !== 'submitted') QUEUE.setActive(slug, null);
+      if (active && (active.phase !== 'submitted' || active.id === repairedPendingId)) QUEUE.setActive(slug, null);
     },
     clear(slug) {
       STORE.remove(slug, 'queue');
@@ -678,10 +699,11 @@
     },
     submit() {
       const form = PAGE.form() || document;
-      const direct = $('#target_submit input[type="submit"], #target_submit button[type="submit"]', form);
+      const direct = $$('#target_submit input[type="submit"], #target_submit button[type="submit"]', form)
+        .find(visible);
       if (direct) return direct;
       return $$('input[type="submit"],button[type="submit"]', form).find(el =>
-        el.name === 'commit' || /SHOW\s*&?\s*EMAIL\s*CODE|SUBMIT/i.test(norm(el.value || el.textContent))
+        visible(el) && (el.name === 'commit' || /SHOW\s*&?\s*EMAIL\s*CODE|SUBMIT/i.test(norm(el.value || el.textContent)))
       ) || null;
     },
     successGiftCard() {
@@ -763,17 +785,32 @@
       const visibleTexts = candidates.filter(visible).map(x => norm(x.textContent)).filter(Boolean);
       return visibleTexts.join(' | ');
     },
-    setValue(el, value) {
+    fireValueEvents(el) {
       if (!el) return;
-      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value') && Object.getOwnPropertyDescriptor(proto, 'value').set;
-      if (setter) setter.call(el, value);
-      else el.value = value;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     },
+    pressEnter(el) {
+      if (!el) return;
+      for (const type of ['keydown', 'keypress', 'keyup']) {
+        el.dispatchEvent(new KeyboardEvent(type, {
+          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+        }));
+      }
+    },
+    setValue(el, value, { enter = false } = {}) {
+      if (!el) return;
+      el.focus();
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+      const setter = descriptor && descriptor.set;
+      if (setter) setter.call(el, value);
+      else el.value = value;
+      DOM.fireValueEvents(el);
+      if (enter) DOM.pressEnter(el);
+    },
     click(el) {
-      if (!enabled(el)) return false;
+      if (!actionable(el)) return false;
       el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       el.click();
       return true;
@@ -1467,17 +1504,47 @@
     while (APPCTL.running && Date.now() - start < CFG.actionTimeoutMs) {
       const code = DOM.codeInput();
       if (code && visible(code)) return code;
+
+      // Preserve the proven v8 order: click the visible GET MY BONUS/Next control,
+      // then let the site's own wizard activate the barcode step.
       const greeting = DOM.greeting();
-      if (greeting && enabled(greeting)) {
+      if (actionable(greeting)) {
+        UI.status('Clicking Get My Bonus…', 'pending');
         DOM.click(greeting);
         await sleep(jitter());
         continue;
       }
+
       const next = DOM.next();
-      if (next && enabled(next)) {
+      if (actionable(next)) {
+        UI.status('Advancing to barcode entry…', 'pending');
         DOM.click(next);
         await sleep(jitter());
         continue;
+      }
+      await sleep(CFG.pollMs);
+    }
+    return null;
+  }
+
+  async function waitForBarcodeNext(codeInput, expectedCode) {
+    const start = Date.now();
+    let lastNudge = 0;
+    while (APPCTL.running && Date.now() - start < CFG.actionTimeoutMs) {
+      if (CAP.challengeVisible()) {
+        if (!(await CAP.waitIfNeeded())) return null;
+      }
+
+      const next = DOM.next();
+      if (actionable(next)) return next;
+
+      // The redemption app's validation has historically reacted to keyboard
+      // events as well as input/change. v8 emitted Enter after barcode fill; keep
+      // that behavior and periodically re-emit the events while Next is disabled.
+      if (codeInput && visible(codeInput) && norm(codeInput.value) === expectedCode && Date.now() - lastNudge >= 450) {
+        DOM.fireValueEvents(codeInput);
+        DOM.pressEnter(codeInput);
+        lastNudge = Date.now();
       }
       await sleep(CFG.pollMs);
     }
@@ -1493,7 +1560,7 @@
       if (email && visible(email)) return email;
       if (!(await CAP.waitIfNeeded())) return null;
       const next = DOM.next();
-      if (next && enabled(next)) {
+      if (actionable(next)) {
         DOM.click(next);
         await sleep(jitter());
         continue;
@@ -1634,21 +1701,22 @@
 
       const codeInput = await advanceToCodeInput();
       if (!codeInput) throw new Error('Could not reach barcode entry step');
-      DOM.setValue(codeInput, item.code);
+      DOM.setValue(codeInput, item.code, { enter: true });
+      UI.status(`Loaded barcode …${item.code.slice(-4)}`, 'pending');
       await sleep(jitter());
 
-      const next = await waitFor(() => {
-        const el = DOM.next();
-        return el && enabled(el) ? el : null;
-      }, CFG.actionTimeoutMs);
+      const next = await waitForBarcodeNext(codeInput, item.code);
       if (!next) throw new Error('Barcode Next button did not become available');
+      UI.status(`Clicking Next …${item.code.slice(-4)}`, 'pending');
       DOM.click(next);
       await sleep(jitter());
 
       if (!(await CAP.waitIfNeeded())) {
-        QUEUE.patch(currentSlug, item.id, { state: 'pending', note: 'CAPTCHA state could not be verified' });
-        QUEUE.setActive(currentSlug, { id: item.id, code: item.code, phase: 'submitted', ts: Date.now() });
-        UI.status(`Pending verification: …${item.code.slice(-4)}`, 'pending');
+        // CAPTCHA occurs before submission. Do NOT mark this as pending/ambiguous:
+        // no redeeming submit has been clicked yet, so the item is safe to retry.
+        QUEUE.patch(currentSlug, item.id, { state: 'queued', note: 'CAPTCHA incomplete before submission; safe to retry' });
+        QUEUE.setActive(currentSlug, null);
+        UI.status(`CAPTCHA incomplete before submission — …${item.code.slice(-4)} requeued`, 'pending');
         return false;
       }
 
@@ -1660,21 +1728,31 @@
       const confirm = DOM.emailConfirm();
       if (confirm) DOM.setValue(confirm, email);
       const terms = DOM.terms();
-      if (terms && !terms.checked) terms.click();
+      if (terms && !terms.checked) {
+        terms.click();
+        terms.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       await sleep(jitter());
 
       const submit = await waitFor(() => {
         const el = DOM.submit();
-        return el && enabled(el) ? el : null;
+        return actionable(el) ? el : null;
       }, CFG.actionTimeoutMs);
       if (!submit) throw new Error('Submit button did not become available');
 
       // Mark pending BEFORE submit. Once submit is clicked, a browser/network
       // failure can leave the server outcome unknown. The only safe automatic
       // behavior in that case is to block further queue advancement.
+      UI.status(`Submitting …${item.code.slice(-4)}`, 'pending');
       QUEUE.patch(currentSlug, item.id, { state: 'pending', note: 'Submitted; awaiting confirmation' });
       QUEUE.setActive(currentSlug, { id: item.id, code: item.code, phase: 'submitted', ts: Date.now() });
-      DOM.click(submit);
+      if (!DOM.click(submit)) {
+        // If the control stopped being actionable between detection and click, no
+        // submission occurred. Requeue rather than manufacturing a pending block.
+        QUEUE.patch(currentSlug, item.id, { state: 'queued', note: 'Submit control changed before click; safe to retry' });
+        QUEUE.setActive(currentSlug, null);
+        throw new Error('Submit button changed before click');
+      }
 
       const started = Date.now();
       while (APPCTL.running && Date.now() - started < CFG.submitTimeoutMs) {
@@ -1708,13 +1786,29 @@
     async run() {
       if (APPCTL.running) return;
       UI.ensureCurrentView();
+      QUEUE.recover(currentSlug);
       if (!LOCK.acquire(currentSlug)) {
         UI.status('Another tab is already processing this promotion', 'error');
         return;
       }
+
+      // Match v8 safety ordering: a visible success page is authoritative and
+      // should be reconciled BEFORE a cached pending item is allowed to block run.
+      if (DOM.done()) {
+        const pending = QUEUE.unresolvedPending(currentSlug);
+        const captured = await APPCTL.captureSuccess(pending);
+        if (captured.ok) {
+          const another = DOM.claimAnother();
+          if (actionable(another)) {
+            DOM.click(another);
+            await sleep(jitter());
+          }
+        }
+      }
+
       if (QUEUE.unresolvedPending(currentSlug)) {
         LOCK.release(currentSlug);
-        UI.status('A pending item must be verified/cleared before processing can continue', 'pending');
+        UI.status('A submitted item is still pending verification; clear it only after confirming the prior redemption outcome', 'pending');
         return;
       }
       if (!QUEUE.next(currentSlug)) {
