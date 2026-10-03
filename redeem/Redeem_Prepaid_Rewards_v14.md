@@ -1,3 +1,6 @@
+# Redeem_Prepaid_Rewards.js — v14
+
+```javascript
 (() => {
   'use strict';
 
@@ -2070,3 +2073,4 @@
   UI.mount();
   APPCTL.invoke();
 })();
+```
