@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '11';
+  const SCRIPT_VERSION = '12';
 
   /*
    * ============================================================================
@@ -10,13 +10,13 @@
    *
    * VERSION
    * -------
-   * 11
+   * 12
    *
    * PURPOSE
    * -------
    * This companion script automates the shared InComm-style rewards redemption
-   * application used by multiple promotions/domains. Version 11 keeps the v8
-   * interaction engine semantics while retaining slug-scoped caches and captures
+   * application used by multiple promotions/domains. Version 12 restores the proven v8
+   * step-navigation semantics while retaining slug-scoped caches and captures
    * gift-card credentials from the confirmed success page before navigation.
    * The visible branding and body[data-project] value are NOT reliable application
    * identifiers.
@@ -136,6 +136,7 @@
   const visible = el => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   const enabled = el => !!el && !el.disabled && el.getAttribute('aria-disabled') !== 'true';
   const actionable = el => visible(el) && enabled(el);
+  const editable = el => actionable(el) && !el.readOnly;
   const uid = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const extractBarcode = value => (String(value || '').match(/\b\d{30}\b/) || [])[0] || '';
 
@@ -576,41 +577,40 @@
     },
     recover(slug) {
       /*
-       * Recovery rule:
-       * - `processing` is always pre-submit and can safely return to queued.
-       * - A true submitted `pending` item remains blocked.
-       * - Version 10 incorrectly marked one PRE-submit CAPTCHA timeout path as
-       *   pending. That exact known-bad state is safe to repair to queued. This
-       *   one-time behavioral repair prevents an old v10 cache from permanently
-       *   blocking the v11 workflow with "pending item must be verified".
+       * Pending is valid only after a real submit attempt. v10/v11 could leave
+       * pre-submit rows marked pending, which blocked navigation before the v8
+       * interaction engine could even click Get My Bonus. Preserve a pending row
+       * only when durable evidence says submit was attempted: a submitted timestamp
+       * on the row or the matching active record with phase="submitted".
        */
       const active = QUEUE.active(slug);
       const rows = QUEUE.load(slug);
       let changed = false;
-      let repairedPendingId = '';
+      let keepActive = false;
 
       for (const row of rows) {
         if (!row) continue;
+        const submittedEvidence = !!row.submitted || !!(active && active.id === row.id && active.phase === 'submitted');
+
         if (row.state === 'processing') {
-          const isSubmittedActive = active && active.id === row.id && active.phase === 'submitted';
-          row.state = isSubmittedActive ? 'pending' : 'queued';
-          row.note = isSubmittedActive ? 'Previous submitted state was not verified' : 'Recovered after reload';
+          row.state = submittedEvidence ? 'pending' : 'queued';
+          row.note = submittedEvidence ? 'Previous submitted state was not verified' : 'Recovered before submission';
           row.updated = Date.now();
           changed = true;
-          continue;
+        } else if (row.state === 'pending' && !submittedEvidence) {
+          row.state = 'queued';
+          row.note = 'Recovered false pre-submit pending state';
+          row.updated = Date.now();
+          changed = true;
         }
 
-        if (row.state === 'pending' && /CAPTCHA state could not be verified/i.test(String(row.note || ''))) {
-          row.state = 'queued';
-          row.note = 'Recovered v10 pre-submit CAPTCHA state';
-          row.updated = Date.now();
-          repairedPendingId = row.id;
-          changed = true;
+        if (row.state === 'pending' && submittedEvidence && active && active.id === row.id && active.phase === 'submitted') {
+          keepActive = true;
         }
       }
 
       if (changed) QUEUE.save(slug, rows);
-      if (active && (active.phase !== 'submitted' || active.id === repairedPendingId)) QUEUE.setActive(slug, null);
+      if (active && !keepActive) QUEUE.setActive(slug, null);
     },
     clear(slug) {
       STORE.remove(slug, 'queue');
@@ -669,7 +669,8 @@
       return $('.step.step_active', PAGE.root() || document) || $('.step_active', PAGE.root() || document);
     },
     controls(root = DOM.activeStep() || PAGE.form() || document) {
-      return $$('input,button', root).filter(visible);
+      // v8 searched the active wizard step and included anchors for action links.
+      return $$('input,button,a', root).filter(visible);
     },
     byLabel(label, root = DOM.activeStep() || PAGE.form() || document) {
       const wanted = upper(label);
@@ -679,31 +680,47 @@
       return DOM.byLabel('GET MY BONUS');
     },
     codeInput() {
+      // Preserve v8's target_codes lookup order. The field exists in the DOM while
+      // loading/disabled, so callers must check editable() before writing to it.
       const active = DOM.activeStep();
-      return (active && $('.wizard-serial-number', active)) || $('.wizard-serial-number', PAGE.form() || document);
+      const scope = active || PAGE.form() || document;
+      return $('#target_codes .serial-number_wrapper input:not([type="hidden"])', scope) ||
+        $('#target_codes .serial-number_wrapper input', scope) ||
+        $('#target_codes input:not([type="hidden"])', scope) ||
+        $('.wizard-serial-number', scope) || null;
     },
     next() {
       return DOM.byLabel('NEXT');
     },
     email() {
-      const form = PAGE.form() || document;
-      return $('#workflow_data_email', form) || $('input[name="workflow_data[email]"]', form);
+      const scope = DOM.activeStep() || PAGE.form() || document;
+      return [
+        $('#workflow_data_email', scope),
+        $('input[name="workflow_data[email]"]', scope),
+        ...$$('input[type="email"]', scope)
+      ].find(visible) || null;
     },
     emailConfirm() {
-      const form = PAGE.form() || document;
-      return $('#workflow_data_email_confirmation', form) || $('input[name="workflow_data[email_confirmation]"]', form);
+      const scope = DOM.activeStep() || PAGE.form() || document;
+      return [
+        $('#workflow_data_email_confirmation', scope),
+        $('input[name="workflow_data[email_confirmation]"]', scope)
+      ].find(visible) || null;
     },
     terms() {
-      const form = PAGE.form() || document;
-      return $('#workflow_data_terms_of_service', form) || $('input[name="workflow_data[terms_of_service]"][type="checkbox"]', form);
+      const scope = DOM.activeStep() || PAGE.form() || document;
+      return [
+        $('#workflow_data_terms_of_service', scope),
+        $('input[name="workflow_data[terms_of_service]"][type="checkbox"]', scope)
+      ].find(visible) || null;
     },
     submit() {
-      const form = PAGE.form() || document;
-      const direct = $$('#target_submit input[type="submit"], #target_submit button[type="submit"]', form)
-        .find(visible);
-      if (direct) return direct;
-      return $$('input[type="submit"],button[type="submit"]', form).find(el =>
-        visible(el) && (el.name === 'commit' || /SHOW\s*&?\s*EMAIL\s*CODE|SUBMIT/i.test(norm(el.value || el.textContent)))
+      // v8 resolved submit from the active step so hidden controls in later wizard
+      // steps cannot be selected early.
+      const scope = DOM.activeStep() || PAGE.form() || document;
+      return $$('button,a,input', scope).find(el =>
+        visible(el) && enabled(el) &&
+        (upper(el.value || el.textContent) === 'SHOW & EMAIL CODE' || el.name === 'commit')
       ) || null;
     },
     successGiftCard() {
@@ -784,6 +801,20 @@
       ];
       const visibleTexts = candidates.filter(visible).map(x => norm(x.textContent)).filter(Boolean);
       return visibleTexts.join(' | ');
+    },
+    signature() {
+      // v8 used a lightweight wizard signature after clicks instead of assuming a
+      // fixed transition delay. Keep that behavior for dynamic InComm steps.
+      const step = DOM.activeStep() || document;
+      const next = DOM.next();
+      return [
+        location.href,
+        step === document ? 'doc' : (step.id || step.className || 'step'),
+        norm(step.textContent).slice(0, 140),
+        DOM.email() ? 1 : 0,
+        DOM.done() ? 1 : 0,
+        next ? +!!next.disabled : -1
+      ].join('|');
     },
     fireValueEvents(el) {
       if (!el) return;
@@ -961,7 +992,7 @@
     <div id="bsstatus">Ready</div>
   </div>
   <div id="bsfoot">
-    <span id="bscredit">courtesy of dotsthewarlock</span>
+    <span id="bscredit">courtesy of dotsthewarlock • v${SCRIPT_VERSION}</span>
     <span id="bscounts">
       <button id="bscountq" class="bscounter" type="button" title="View queue">queue 0/999</button>
       <span id="bssep">•</span>
@@ -1482,92 +1513,18 @@
   };
 
   // ---------------------------------------------------------------------------
-  // Workflow helpers.
+  // Workflow helper. v8 waited on a changing active-step signature after clicks;
+  // this avoids racing the site's dynamic wizard with a fixed delay.
   // ---------------------------------------------------------------------------
-  async function waitFor(predicate, timeoutMs, intervalMs = CFG.pollMs) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (!APPCTL.running) return null;
-      try {
-        const value = predicate();
-        if (value) return value;
-      } catch (_) {}
-      await sleep(intervalMs);
-    }
-    return null;
-  }
-
-  async function advanceToCodeInput() {
-    const existing = DOM.codeInput();
-    if (existing && visible(existing)) return existing;
+  async function waitForActionChange(preSignature) {
     const start = Date.now();
     while (APPCTL.running && Date.now() - start < CFG.actionTimeoutMs) {
-      const code = DOM.codeInput();
-      if (code && visible(code)) return code;
-
-      // Preserve the proven v8 order: click the visible GET MY BONUS/Next control,
-      // then let the site's own wizard activate the barcode step.
-      const greeting = DOM.greeting();
-      if (actionable(greeting)) {
-        UI.status('Clicking Get My Bonus…', 'pending');
-        DOM.click(greeting);
-        await sleep(jitter());
-        continue;
-      }
-
-      const next = DOM.next();
-      if (actionable(next)) {
-        UI.status('Advancing to barcode entry…', 'pending');
-        DOM.click(next);
-        await sleep(jitter());
-        continue;
-      }
+      if (CAP.challengeVisible()) return 'captcha';
+      if (DOM.errorText()) return 'error';
+      if (DOM.signature() !== preSignature) return 'change';
       await sleep(CFG.pollMs);
     }
-    return null;
-  }
-
-  async function waitForBarcodeNext(codeInput, expectedCode) {
-    const start = Date.now();
-    let lastNudge = 0;
-    while (APPCTL.running && Date.now() - start < CFG.actionTimeoutMs) {
-      if (CAP.challengeVisible()) {
-        if (!(await CAP.waitIfNeeded())) return null;
-      }
-
-      const next = DOM.next();
-      if (actionable(next)) return next;
-
-      // The redemption app's validation has historically reacted to keyboard
-      // events as well as input/change. v8 emitted Enter after barcode fill; keep
-      // that behavior and periodically re-emit the events while Next is disabled.
-      if (codeInput && visible(codeInput) && norm(codeInput.value) === expectedCode && Date.now() - lastNudge >= 450) {
-        DOM.fireValueEvents(codeInput);
-        DOM.pressEnter(codeInput);
-        lastNudge = Date.now();
-      }
-      await sleep(CFG.pollMs);
-    }
-    return null;
-  }
-
-  async function advanceToEmail() {
-    const existing = DOM.email();
-    if (existing && visible(existing)) return existing;
-    const start = Date.now();
-    while (APPCTL.running && Date.now() - start < CFG.actionTimeoutMs) {
-      const email = DOM.email();
-      if (email && visible(email)) return email;
-      if (!(await CAP.waitIfNeeded())) return null;
-      const next = DOM.next();
-      if (actionable(next)) {
-        DOM.click(next);
-        await sleep(jitter());
-        continue;
-      }
-      await sleep(CFG.pollMs);
-    }
-    return null;
+    return 'timeout';
   }
 
   // ---------------------------------------------------------------------------
@@ -1590,6 +1547,10 @@
         return;
       }
       UI.ensureCurrentView();
+      // v8 recovered interrupted pre-submit state on every invocation. This also
+      // repairs stale v10/v11 false-pending rows before Auto-Redeem decides whether
+      // there is an eligible queue item.
+      QUEUE.recover(currentSlug);
 
       // Fresh invocation on a success page is a recovery path. Capture the reward
       // immediately, but do not navigate away automatically; the user may be
@@ -1686,100 +1647,252 @@
     },
 
     async redeem(item) {
-      UI.status(`Processing …${item.code.slice(-4)}`, 'pending');
+      /*
+       * Navigation is intentionally v8-shaped: inspect the ACTIVE step on every
+       * pass, act on exactly one visible control, then re-resolve the DOM. Do not
+       * precompute a route through the wizard; inactive steps remain in the DOM
+       * and the barcode input exists while disabled/loading.
+       */
+      const cur = item.code;
+      UI.status(`Processing …${cur.slice(-4)}`, 'pending');
 
-      if (DOM.done()) {
-        const captured = await APPCTL.captureSuccess(item);
-        if (!captured.ok) return false;
-        const another = DOM.claimAnother();
-        if (another && enabled(another)) {
-          DOM.click(another);
-          await sleep(jitter());
+      const requeuePreSubmit = note => {
+        const row = QUEUE.find(currentSlug, item.id);
+        if (row && row.state === 'processing') {
+          QUEUE.patch(currentSlug, item.id, { state: 'queued', note });
+          QUEUE.setActive(currentSlug, null);
         }
-        return true;
-      }
+      };
 
-      const codeInput = await advanceToCodeInput();
-      if (!codeInput) throw new Error('Could not reach barcode entry step');
-      DOM.setValue(codeInput, item.code, { enter: true });
-      UI.status(`Loaded barcode …${item.code.slice(-4)}`, 'pending');
-      await sleep(jitter());
-
-      const next = await waitForBarcodeNext(codeInput, item.code);
-      if (!next) throw new Error('Barcode Next button did not become available');
-      UI.status(`Clicking Next …${item.code.slice(-4)}`, 'pending');
-      DOM.click(next);
-      await sleep(jitter());
-
-      if (!(await CAP.waitIfNeeded())) {
-        // CAPTCHA occurs before submission. Do NOT mark this as pending/ambiguous:
-        // no redeeming submit has been clicked yet, so the item is safe to retry.
-        QUEUE.patch(currentSlug, item.id, { state: 'queued', note: 'CAPTCHA incomplete before submission; safe to retry' });
-        QUEUE.setActive(currentSlug, null);
-        UI.status(`CAPTCHA incomplete before submission — …${item.code.slice(-4)} requeued`, 'pending');
-        return false;
-      }
-
-      const emailInput = await advanceToEmail();
-      if (!emailInput) throw new Error('Could not reach email step');
-      const email = SETTINGS.email(currentSlug);
-      if (!email) throw new Error('Email is required before redemption');
-      DOM.setValue(emailInput, email);
-      const confirm = DOM.emailConfirm();
-      if (confirm) DOM.setValue(confirm, email);
-      const terms = DOM.terms();
-      if (terms && !terms.checked) {
-        terms.click();
-        terms.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      await sleep(jitter());
-
-      const submit = await waitFor(() => {
-        const el = DOM.submit();
-        return actionable(el) ? el : null;
-      }, CFG.actionTimeoutMs);
-      if (!submit) throw new Error('Submit button did not become available');
-
-      // Mark pending BEFORE submit. Once submit is clicked, a browser/network
-      // failure can leave the server outcome unknown. The only safe automatic
-      // behavior in that case is to block further queue advancement.
-      UI.status(`Submitting …${item.code.slice(-4)}`, 'pending');
-      QUEUE.patch(currentSlug, item.id, { state: 'pending', note: 'Submitted; awaiting confirmation' });
-      QUEUE.setActive(currentSlug, { id: item.id, code: item.code, phase: 'submitted', ts: Date.now() });
-      if (!DOM.click(submit)) {
-        // If the control stopped being actionable between detection and click, no
-        // submission occurred. Requeue rather than manufacturing a pending block.
-        QUEUE.patch(currentSlug, item.id, { state: 'queued', note: 'Submit control changed before click; safe to retry' });
-        QUEUE.setActive(currentSlug, null);
-        throw new Error('Submit button changed before click');
-      }
-
-      const started = Date.now();
-      while (APPCTL.running && Date.now() - started < CFG.submitTimeoutMs) {
+      while (APPCTL.running) {
+        // Server-confirmed success is authoritative and must be captured before
+        // any pending-state gate or navigation away from the credential page.
         if (DOM.done()) {
           const captured = await APPCTL.captureSuccess(item);
           if (!captured.ok) return false;
           const another = DOM.claimAnother();
-          if (another && enabled(another)) {
+          if (actionable(another)) {
+            UI.status('Complete — opening next redemption…', 'ok');
             DOM.click(another);
             await sleep(jitter());
+            return true;
           }
-          return true;
-        }
-        const error = DOM.errorText();
-        if (error) {
-          QUEUE.patch(currentSlug, item.id, { state: 'error', note: error });
-          QUEUE.setActive(currentSlug, null);
-          UI.status(`Redemption error: ${error}`, 'error');
+          UI.status('Claim Another Bonus unavailable', 'pending');
           return false;
         }
-        if (!(await CAP.waitIfNeeded())) break;
+
+        if (CAP.challengeVisible()) {
+          if (!(await CAP.waitIfNeeded())) {
+            requeuePreSubmit('CAPTCHA incomplete before submission; safe to retry');
+            UI.status(`CAPTCHA incomplete before submission — …${cur.slice(-4)} requeued`, 'pending');
+            return false;
+          }
+          continue;
+        }
+
+        const pageError = DOM.errorText();
+        if (pageError) {
+          const row = QUEUE.find(currentSlug, item.id);
+          if (row && row.state === 'pending') {
+            UI.status(`Page error after submission …${cur.slice(-4)} — verify before retrying`, 'pending');
+          } else {
+            QUEUE.patch(currentSlug, item.id, { state: 'error', note: pageError });
+            QUEUE.setActive(currentSlug, null);
+            UI.status(`Redemption error: ${pageError}`, 'error');
+          }
+          return false;
+        }
+
+        // Step 1: v8 resolved Get My Bonus from the current active step and
+        // clicked it as soon as it was visible/enabled.
+        const greeting = DOM.greeting();
+        if (greeting && visible(greeting)) {
+          if (!enabled(greeting)) {
+            UI.status('Waiting for Get My Bonus…', 'pending');
+            await sleep(CFG.pollMs);
+            continue;
+          }
+          const pre = DOM.signature();
+          if (!DOM.click(greeting)) {
+            await sleep(CFG.pollMs);
+            continue;
+          }
+          UI.status(`Clicked Get My Bonus …${cur.slice(-4)}`, 'pending');
+          await sleep(jitter());
+          const state = await waitForActionChange(pre);
+          if (state === 'captcha' && !(await CAP.waitIfNeeded())) {
+            requeuePreSubmit('CAPTCHA incomplete before submission; safe to retry');
+            return false;
+          }
+          continue;
+        }
+
+        // Steps 2/3: preserve v8's Next-first logic. If Next is disabled, wait
+        // for the barcode field to become editable before writing or nudging it.
+        const next = DOM.next();
+        const codeInput = DOM.codeInput();
+        if (next && visible(next)) {
+          const serial = extractBarcode(codeInput && codeInput.value);
+
+          if (enabled(next)) {
+            const pageCode = serial || cur;
+            if (pageCode && pageCode !== cur) {
+              UI.status(`Page contains a different barcode …${pageCode.slice(-4)} — stopped`, 'error');
+              return false;
+            }
+            const pre = DOM.signature();
+            if (!DOM.click(next)) {
+              await sleep(CFG.pollMs);
+              continue;
+            }
+            UI.status(`Clicked Next …${cur.slice(-4)}`, 'pending');
+            await sleep(jitter());
+            const state = await waitForActionChange(pre);
+            if (state === 'captcha' && !(await CAP.waitIfNeeded())) {
+              requeuePreSubmit('CAPTCHA incomplete before submission; safe to retry');
+              return false;
+            }
+            continue;
+          }
+
+          if (!editable(codeInput)) {
+            UI.status('Preparing barcode input…', 'pending');
+            await sleep(CFG.pollMs);
+            continue;
+          }
+
+          if (serial && serial !== cur) {
+            UI.status(`Barcode field already contains another code …${serial.slice(-4)} — stopped`, 'error');
+            return false;
+          }
+
+          if (!serial) {
+            DOM.setValue(codeInput, cur, { enter: true });
+            UI.status(`Loaded barcode …${cur.slice(-4)}`, 'pending');
+          } else {
+            codeInput.focus();
+            DOM.fireValueEvents(codeInput);
+            DOM.pressEnter(codeInput);
+          }
+          await sleep(jitter());
+          continue;
+        }
+
+        // Step 4: fill email/confirmation/terms only when the active email step
+        // is visible. Pending is created only immediately before a real submit.
+        const emailInput = DOM.email();
+        if (emailInput) {
+          const email = SETTINGS.email(currentSlug);
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            UI.status('Enter a valid email before redemption', 'error');
+            return false;
+          }
+
+          DOM.setValue(emailInput, email);
+          const confirm = DOM.emailConfirm();
+          if (confirm) DOM.setValue(confirm, email);
+          const terms = DOM.terms();
+          if (terms && !terms.checked) {
+            terms.checked = true;
+            terms.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          if (await HIST.has(currentSlug, cur)) {
+            QUEUE.patch(currentSlug, item.id, { state: 'duplicate', note: 'Became duplicate before submission' });
+            QUEUE.setActive(currentSlug, null);
+            UI.status(`Duplicate stopped …${cur.slice(-4)}`, 'pending');
+            return true;
+          }
+
+          UI.status(`Preparing submission …${cur.slice(-4)}…`, 'pending');
+          await sleep(jitter());
+          if (!APPCTL.running) return false;
+          if (CAP.challengeVisible()) continue;
+
+          const submit = DOM.submit();
+          if (!submit) {
+            UI.status('Submit unavailable — stopped', 'error');
+            throw new Error('Submit button did not become available');
+          }
+
+          const submittedAt = Date.now();
+          QUEUE.patch(currentSlug, item.id, {
+            state: 'pending',
+            note: 'Submission clicked; awaiting confirmation',
+            submitted: submittedAt
+          });
+          QUEUE.setActive(currentSlug, { id: item.id, code: cur, phase: 'submitted', ts: submittedAt });
+
+          if (!DOM.click(submit)) {
+            QUEUE.patch(currentSlug, item.id, {
+              state: 'queued',
+              note: 'Submit control changed before click; safe to retry',
+              submitted: null
+            });
+            QUEUE.setActive(currentSlug, null);
+            throw new Error('Submit button changed before click');
+          }
+
+          UI.status(`Submitted …${cur.slice(-4)} — waiting for confirmation…`, 'pending');
+          let deadline = Date.now() + CFG.submitTimeoutMs;
+          while (APPCTL.running && Date.now() < deadline) {
+            if (DOM.done()) {
+              const captured = await APPCTL.captureSuccess(item);
+              if (!captured.ok) return false;
+              const another = DOM.claimAnother();
+              if (actionable(another)) {
+                UI.status('Complete — opening next redemption…', 'ok');
+                DOM.click(another);
+                await sleep(jitter());
+                return true;
+              }
+              UI.status('Claim Another Bonus unavailable', 'pending');
+              return false;
+            }
+
+            const error = DOM.errorText();
+            if (error) {
+              QUEUE.patch(currentSlug, item.id, { state: 'error', note: error });
+              QUEUE.setActive(currentSlug, null);
+              UI.status(`Redemption error: ${error}`, 'error');
+              return false;
+            }
+
+            if (CAP.challengeVisible()) {
+              if (!(await CAP.waitIfNeeded())) break;
+              deadline = Date.now() + CFG.submitTimeoutMs;
+              continue;
+            }
+            await sleep(CFG.pollMs);
+          }
+
+          QUEUE.patch(currentSlug, item.id, { state: 'pending', note: 'Outcome not confirmed before timeout' });
+          UI.status(`Pending verification: …${cur.slice(-4)} — queue halted`, 'pending');
+          return false;
+        }
+
+        // v8 fallback: if an editable barcode field exists without a visible Next,
+        // keep the field/event state synchronized until the wizard renders controls.
+        if (codeInput && editable(codeInput)) {
+          const serial = extractBarcode(codeInput.value);
+          if (serial && serial !== cur) {
+            UI.status(`Barcode field already contains another code …${serial.slice(-4)} — stopped`, 'error');
+            return false;
+          }
+          if (!serial) DOM.setValue(codeInput, cur, { enter: true });
+          else {
+            codeInput.focus();
+            DOM.fireValueEvents(codeInput);
+            DOM.pressEnter(codeInput);
+          }
+          await sleep(jitter());
+          continue;
+        }
+
+        UI.status('Waiting for page…', 'pending');
         await sleep(CFG.pollMs);
       }
 
-      // No definitive success/error signal. Keep pending and halt.
-      QUEUE.patch(currentSlug, item.id, { state: 'pending', note: 'Outcome not confirmed before timeout' });
-      UI.status(`Pending verification: …${item.code.slice(-4)} — queue halted`, 'pending');
       return false;
     },
 
@@ -1816,12 +1929,9 @@
         UI.status('Queue is empty', '');
         return;
       }
-      if (!SETTINGS.email(currentSlug)) {
-        LOCK.release(currentSlug);
-        UI.status('Enter an email before starting', 'error');
-        return;
-      }
-
+      // Match v8 navigation semantics: do not block Get My Bonus/Next just because
+      // email is not configured yet. Validate email only when the active email step
+      // is actually reached.
       APPCTL.running = true;
       APPCTL.stopRequested = false;
       UI.play();
