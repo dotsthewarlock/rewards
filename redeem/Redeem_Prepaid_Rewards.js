@@ -854,8 +854,15 @@
   // ---------------------------------------------------------------------------
   const CAP = {
     challengeVisible() {
-      return $$('iframe[src*="recaptcha"][src*="bframe"], iframe[title*="challenge"], iframe[title*="recaptcha challenge"]')
-        .some(frame => visible(frame));
+      // Match v8 exactly: a dormant reCAPTCHA bframe can retain dimensions while
+      // its challenge container is hidden. Computed visibility/opacity must win.
+      return $$('iframe[src*="/recaptcha/api2/bframe"],iframe[title*="recaptcha challenge" i]')
+        .some(frame => {
+          if (!frame) return false;
+          const rect = frame.getBoundingClientRect();
+          const style = getComputedStyle(frame);
+          return !!(rect.width && rect.height && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0');
+        });
     },
     async waitIfNeeded() {
       if (!CAP.challengeVisible()) return true;
