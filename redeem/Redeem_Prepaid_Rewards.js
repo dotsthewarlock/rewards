@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const SCRIPT_VERSION = '14';
+  const SCRIPT_VERSION = '15';
 
   /*
    * ============================================================================
@@ -10,13 +10,14 @@
    *
    * VERSION
    * -------
-   * 14
+   * 15
    *
    * PURPOSE
    * -------
    * This companion script automates the shared InComm-style rewards redemption
-   * application used by multiple promotions/domains. Version 14 keeps all v13
-   * behavior while restoring v8-style transaction sequencing around success pages:
+   * application used by multiple promotions/domains. Version 15 extends promotion
+   * slug validation to support alphanumeric suffixes without altering the v14
+   * redemption sequence and safety checks around success pages:
    * an exact success barcode + GC/PIN completes that barcode, Claim Another must
    * transition to a fresh redemption page before another queue item can start, and
    * a submitted/pending current item is retried from the beginning after refresh.
@@ -45,8 +46,8 @@
    * PROMOTION IDENTITY
    * ------------------
    * currentSlug is derived only from document.body.dataset.slug and must match:
-   *     ^CA\d{4}[A-Z]+$
-   * Examples: CA1026VANW, CA0926CKVAN
+   *     ^CA\d{4}[A-Z][A-Z0-9]*$
+   * Examples: CA1026VANW, CA0926CKVAN, CA1026CK1
    *
    * There are intentionally TWO slug concepts:
    *   - currentSlug: the promotion represented by the currently loaded page.
@@ -125,7 +126,7 @@
     submitTimeoutMs: 30000,
     lockStaleMs: 15000,
     lockHeartbeatMs: 3000,
-    slugPattern: /^CA\d{4}[A-Z]+$/
+    slugPattern: /^CA\d{4}[A-Z][A-Z0-9]*$/
   });
 
   const $ = (selector, root = document) => root.querySelector(selector);
