@@ -43,12 +43,18 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess'].includes(m?.type))return;
     const report=D.report(document);
     const recognized=!stopped&&report?.status==='recognized';
     if(m.type!=='companion.inspect'){
       if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
       if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
+      if(m.type==='companion.reconcileSuccess'){
+        const current=()=>!stopped&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+        globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,
+          {origin:m.origin,campaign:m.campaign,documentToken},current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
+        return true;
+      }
       if(m.type==='companion.editCache'){
         // The original v15 overlay is a compatibility warning, not a cooperative lock.
         const current=()=>{

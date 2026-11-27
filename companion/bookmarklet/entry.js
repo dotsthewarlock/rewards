@@ -24,10 +24,14 @@ function launchBookmarklet(markup,css){
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
    const current=inspect();
    if(op==='inspect')return current;
-   if(op==='exportRewards'||op==='previewImport'||op==='editCache'){
+   if(op==='exportRewards'||op==='previewImport'||op==='editCache'||op==='reconcileSuccess'){
      const t=fields.target,c=current.target;
      if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
      if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
+     if(op==='reconcileSuccess'){
+       const current=()=>host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+       return globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,c,current);
+     }
      if(op==='editCache'){
        const current=()=>{
          const now=D.report(document);

@@ -2,6 +2,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright
+from claim_fixture import CODE, URL, success_fixture, assert_captured
 root=Path(__file__).resolve().parents[1]/"extension"
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
@@ -104,4 +105,22 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         page.locator(".codes-container").evaluate("el=>el.insertAdjacentHTML('beforeend','<div class=title>Card PIN</div><div class=text>1234</div>')")
         assert not page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)["ok"]
         print("candidate v15 success parsing, exact eligible linkage, hidden and ambiguous fields PASS",flush=True)
+        # Real extension transport, synthetic durable intent. No merchant clicks.
+        ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()))
+        page.goto(URL)
+        page.bring_to_front()
+        recovered=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.report?.stage==='success'&&r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no success target')}""",tab)
+        target=recovered["target"]
+        assert recovered["summary"]["unresolved"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+        assert not worker.evaluate("t=>reconcileTab(t)",target)["ok"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+        page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
+        stale=dict(target,documentToken="00000000-0000-0000-0000-000000000000")
+        assert not worker.evaluate("t=>reconcileTab(t)",stale)["ok"]
+        assert worker.evaluate("t=>reconcileTab(t)",target)=={"ok":True,"status":"complete"}
+        assert_captured(page)
+        assert not worker.evaluate("t=>reconcileTab(t)",target)["ok"]
+        assert_captured(page)
+        print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
     finally:ctx.close()

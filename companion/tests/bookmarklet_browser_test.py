@@ -1,6 +1,7 @@
 """Exercise the generated shared workspace on a synthetic page, never a merchant."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
+from claim_fixture import CODE, URL, success_fixture, assert_captured
 root=Path(__file__).resolve().parents[1]
 script=(root/".build/bookmarklet.js").read_text()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW"><main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET"><button type="button">Get My Bonus</button></div></form></main><script>
@@ -56,6 +57,19 @@ with sync_playwright() as p:
     assert page.evaluate("window.merchantActions===0 && !localStorage.getItem('bs_rewards:CA1126VANW:active')")
     page.evaluate(script)
     expect(host).to_have_count(0)
+    ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()))
+    page.goto(URL)
+    page.evaluate(script)
+    expect(host).to_contain_text("Unresolved reward")
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+    host.get_by_role("button",name="Capture matching reward").click()
+    expect(host.locator("#announcement")).to_contain_text("Capture not confirmed")
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+    page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
+    host.get_by_role("button",name="Capture matching reward").click()
+    expect(host.locator("#announcement")).to_contain_text("Matching reward captured")
+    assert_captured(page)
+    expect(host.get_by_role("button",name="Capture matching reward")).to_have_count(0)
     assert not errors,errors
     browser.close()
     print("Shared bookmarklet workspace, explicit cache edits, read-only mount, stale identity and no merchant actions PASS")

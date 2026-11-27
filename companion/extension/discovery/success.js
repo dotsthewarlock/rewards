@@ -1,5 +1,5 @@
 /* Adapted from v15 DOM.successGiftCard. Explicit read only, never used by
- * discovery/diagnostic collection. No capture or merchant action here.
+ * discovery/diagnostic collection. Explicit reconciliation only; no merchant actions.
  */
 (() => {
   'use strict';
@@ -54,5 +54,34 @@
       return {ok:true,card:{cardMerchant,valueRecent:amount.toFixed(2),gcNumber:fields.number,gcPin:fields.pin,sourceRedemptionCode:matches[0]}};
     }catch{return fail('unreadable-success');}
   }
-  globalThis.RewardsSuccess=Object.freeze({readSuccess});
+  // Both distributions use this explicit action. Never auto-capture on mount,
+  // infer an attempt from a visible card, or advance the merchant wizard.
+  async function reconcileVisible(doc,storage,locks,target,contextValid){
+    const T=globalThis.RewardsTransactions;
+    if(!T||typeof contextValid!=='function'||!target)return fail('reconciliation-blocked');
+    try{
+      const id=D.identity(doc),url=doc.location.href;
+      if(id?.status!=='recognized'||id.stage!=='success'||id.origin!==target.origin||
+        id.campaign!==target.campaign||!contextValid())return fail('context-changed');
+      const active=JSON.parse(storage.getItem(L.key(target.campaign,'active'))||'null');
+      const attempt=active?.attempt;
+      if(!T.validReview(attempt)||active.schema!=='rewards.pending/1'||attempt.origin!==target.origin||
+        attempt.campaign!==target.campaign)return fail('reconciliation-blocked');
+      const observed=readSuccess(doc,attempt.code);
+      if(!observed.ok)return fail('reconciliation-blocked');
+      const fingerprint=JSON.stringify(observed.card);
+      const current=()=>{
+        if(!contextValid()||doc.location.href!==url)return false;
+        const now=D.identity(doc);
+        if(now?.status!=='recognized'||now.stage!=='success'||now.root!==id.root||
+          now.origin!==target.origin||now.campaign!==target.campaign)return false;
+        const result=readSuccess(doc,attempt.code);
+        return result.ok&&JSON.stringify(result.card)===fingerprint;
+      };
+      // Core verifies ownership, exact durable intent and source linkage again,
+      // and checks this live fingerprint before each critical cache write.
+      return await T.reconcileSuccess(storage,locks,target,attempt.attemptId,observed.card,current);
+    }catch{return fail('reconciliation-blocked');}
+  }
+  globalThis.RewardsSuccess=Object.freeze({readSuccess,reconcileVisible});
 })();

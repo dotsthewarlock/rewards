@@ -66,6 +66,9 @@ async function scopedOperation(target,type,fields,validate,write=false){
 const exportTab=target=>scopedOperation(target,'companion.exportRewards',{},L.validateExport);
 const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedOperation(target,'companion.previewImport',{text},L.validatePreview):{ok:false,reason:'invalid-input'};
 const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,'companion.editCache',{op,value},result=>L.validateEdit(result,op),true):{ok:false,reason:'invalid-input'};
+const reconcileTab=target=>scopedOperation(target,'companion.reconcileSuccess',{},result=>
+  result?.ok===true&&result.status==='complete'?{ok:true,status:'complete'}:
+  result?.ok===false?{ok:false,reason:'reconciliation-blocked'}:null,true);
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
@@ -90,6 +93,7 @@ async function handle(m,sender){
   if(m.op==='exportRewards')return exportTab(m.target);
   if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='editCache')return editTab(m.target,m.edit,m.value);
+  if(m.op==='reconcileSuccess')return reconcileTab(m.target);
   if(m.op==='exportDiagnostics'){
     const {records}=await diagnostics();
     return {ok:true,export:{schema:'rewards.structural-export/1',records}};

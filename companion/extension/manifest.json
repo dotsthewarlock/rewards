@@ -47,6 +47,8 @@
       "js": [
         "discovery/core.js",
         "discovery/legacy.js",
+        "core/transactions.js",
+        "discovery/success.js",
         "discovery/content.js"
       ],
       "run_at": "document_idle",
