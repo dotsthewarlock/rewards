@@ -49,3 +49,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.3/M2 offline scheduling developer checkpoint (2026-11-27)](2026-11-27_V0.3_M2_offline.md): pure due-time/state planning, synthetic lifecycle and recovery boundaries, unchanged runtime package verification.
 
 - [V0.3/M2 offline planner architect review (2026-11-27)](2026-11-27_V0.3_M2_offline-review.md): synthetic foundation accepted, native evidence dependency, return to independent core diagnostics.
+
+- [V0.3 timeline correction](2026-11-27_V0.3_timeline-correction.md): confirmed Chrome readback root cause and scoped manual-capture candidate.

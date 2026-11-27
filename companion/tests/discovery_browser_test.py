@@ -91,6 +91,21 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert diagnostic_export["export"]["records"]==records
             assert diagnostic_export["export"]["events"][0]["snapshot"]==0
             assert diagnostic_export["export"]["events"][0]["reason"]=="initial"
+            # Manual capture is bound to current recognized context, enabled recording and trusted workspace sender.
+            capture=panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",connected["target"])
+            assert capture=={"ok":True},capture
+            captured=worker.evaluate("async()=>await diagnostics()")
+            assert captured["records"]==records
+            assert len(captured["events"])==len(diagnostic_export["export"]["events"])+1
+            assert captured["events"][-1]["reason"]=="manual-capture"
+            assert not panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",stale)["ok"]
+            worker.evaluate("chrome.storage.local.set({diagnosticsEnabled:false})")
+            denied=panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",connected["target"])
+            assert denied=={"ok":False,"reason":"diagnostics-disabled-or-unrecognized"},denied
+            assert worker.evaluate("async()=> (await diagnostics()).events")==captured["events"]
+            worker.evaluate("chrome.storage.local.set({diagnosticsEnabled:true})")
+            assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+            print("Manual evidence capture, stale target and recording opt-in PASS",flush=True)
             # Exercise the actual index sender and trusted manual click against a
             # worker-local synthetic response, never the public network.
             worker.evaluate("""()=>{globalThis.catalogFetchCalls=0;globalThis.catalogMode='ok';

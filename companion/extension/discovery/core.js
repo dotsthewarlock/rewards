@@ -23,7 +23,12 @@
   const vocabulary=Object.freeze(['Get My Bonus','Next','Back','Show & Email Code','Submit',
     'Choose your bonus','Which product did you purchase?','Where did you purchase your gift card?',
     'Claim Another','Claim Another Code','Claim Another Bonus','Eligible Card','Bonus Code',
-    'Gift Card Number','Card Number','PIN','Gift Card PIN','Card PIN']);
+    'Gift Card Number','Card Number','PIN','Gift Card PIN','Card PIN',
+    'Welcome!','Add your Code','Add your barcode','Where is my barcode?',
+    'Zift Zillions of Gifts Have Fun','Petro Canada $10 eGift Card','Petro-Canada $10 eGift Card',
+    'Enter your email','Enter email address where your code will be sent','Take a photo of your barcode',
+    'Barcode Photo','Upload Photo','Choose File...','Cancel','Terms and Conditions',
+    'Confirmation','Success','Congratulations!','Error','Close','Choisissez votre prime','Suivant','Retour','Soumettre']);
   const normalize=s=>typeof s==='string'?s.trim().toUpperCase():'';
   const slug=s=>/^CA\d{4}[A-Z][A-Z0-9]*$/.test(normalize(s))&&s.length<=40?normalize(s):null;
   const allowedOrigin=o=>typeof o==='string'&&Object.hasOwn(origins,o);
@@ -90,7 +95,7 @@
       controls[key]={present:nodes.length,visible:nodes.filter(visible).length,actionable:nodes.filter(actionable).length};
     }
     const found=new Set();
-    if(id.root)for(const el of [...id.root.querySelectorAll('button,input[type="submit"],input[type="button"],a,label,h1,h2,h3,h4,.title,[role="button"],[role="heading"]')].slice(0,limit)){
+    if(id.root)for(const el of [...id.root.querySelectorAll('button,input[type="submit"],input[type="button"],a,label,h1,h2,h3,h4,h5,h6,.title,[role="button"],[role="heading"],[role="option"]')].slice(0,limit)){
       if(!visible(el))continue;
       const raw=el.matches('input')?el.getAttribute('value'):el.textContent;
       const match=vocabulary.find(x=>normalize(x)===normalize((raw||'').replace(/:$/,'')));

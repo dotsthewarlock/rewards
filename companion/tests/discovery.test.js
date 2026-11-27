@@ -171,3 +171,12 @@ test('individual reveal binds exact snapshot, rejects masked collisions after re
  assert.equal(L.revealReward(storage,slug,fresh.rewardSnapshot,1).ok,false);
  assert.equal(L.revealReward(storage,slug,fresh.rewardSnapshot,999).ok,false);
 });
+
+
+test('diagnostic vocabulary is additive and limited to fixed public wizard phrases',()=>{
+ const p=valid();
+ assert.deepEqual(D.validate(p,origin),p); // legacy snapshot still valid
+ const labels=['Get My Bonus','Choose your bonus','Add your Code','Petro-Canada $10 eGift Card','Soumettre'];
+ assert.deepEqual(D.validate({...p,labels},origin).labels,labels);
+ assert.equal(D.validate({...p,labels:[...labels,'unlisted fixture text']},origin),null);
+});
