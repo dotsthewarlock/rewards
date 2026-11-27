@@ -15,3 +15,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 cache and transaction boundary (2026-11-27)](2026-11-27_V0.2_cache-transaction.md): verified shared edits, fixture-tested persistence and exact capture candidates.
 
 - [V0.2 reconciliation architect review (2026-11-27)](2026-11-27_V0.2_reconciliation-review.md): verified transport/capture, permission preflight and session handoff contract.
+
+- [V0.2 foreground authorization developer handoff (2026-11-27)](2026-11-27_V0.2_foreground.md): verified exact attempt binding, native final-form transport, source audit and remaining gates.
