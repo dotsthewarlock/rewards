@@ -1,0 +1,200 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Rewards Companion prototype</title><style>:root {color-scheme:light;--surface:#faf8ff;--container:#eeedf5;--high:#e3e3ed;--text:#191b23;--muted:#444754;--primary:#2756a0;--on-primary:#fff;--selected:#d8e3ff;--on-selected:#102d60;--outline:#6d707e;--error:#a51b24;--error-bg:#ffdadc;--on-error:#6d0a13;--success:#16613c;--focus:#2756a0;--radius:16px;font:14px/1.5 system-ui,sans-serif}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--surface:#15171f;--container:#222530;--high:#303441;--text:#e7e9f3;--muted:#c3c6d4;--primary:#b0c6ff;--on-primary:#002b62;--selected:#324a78;--on-selected:#e3eaff;--outline:#a1a5b6;--error:#ffb4bb;--error-bg:#75232b;--on-error:#fff1f1;--success:#8ddbaf;--focus:#b0c6ff}}
+:root[data-theme=dark]{color-scheme:dark;--surface:#15171f;--container:#222530;--high:#303441;--text:#e7e9f3;--muted:#c3c6d4;--primary:#b0c6ff;--on-primary:#002b62;--selected:#324a78;--on-selected:#e3eaff;--outline:#a1a5b6;--error:#ffb4bb;--error-bg:#75232b;--on-error:#fff1f1;--success:#8ddbaf;--focus:#b0c6ff}
+
+*{box-sizing:border-box}body{margin:0;color:var(--text);background:var(--surface);overflow-wrap:anywhere}header,main,footer,#announcement{padding:12px 16px}header{padding-bottom:4px}h1{font-size:22px;margin:0;font-weight:600}h2{font-size:20px;margin:0 0 8px}h3{font-size:16px;margin:0 0 8px}p{margin:4px 0}small,.muted{color:var(--muted);font-size:13px}.demo{font-size:12px;color:var(--muted);font-weight:600}nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:4px 8px;border-bottom:1px solid var(--outline)}nav button{font-size:12px;padding:6px 2px;border:0;border-radius:12px;background:transparent;min-width:0}nav button[aria-current=page]{background:var(--selected);color:var(--on-selected);font-weight:650}button,select,input,textarea{font:inherit;color:inherit;max-width:100%;min-width:0}button,select,input:not([type=checkbox]),textarea{min-height:48px}button{cursor:pointer;border:1px solid var(--outline);border-radius:24px;background:transparent;padding:8px 14px;font-weight:550}button.primary{background:var(--primary);color:var(--on-primary);border-color:transparent}button.text{border:0;color:var(--primary);padding:8px}button:disabled{opacity:.55;cursor:not-allowed}button:hover:not(:disabled){box-shadow:inset 0 0 0 100px #80808014}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}input:not([type=checkbox]),textarea,select{width:100%;background:var(--surface);border:1px solid var(--outline);border-radius:8px;padding:8px 12px}textarea{resize:vertical;min-height:76px}label{display:block;font-weight:550;margin:4px 0}label.check{display:flex;gap:12px;align-items:center;min-height:48px;margin:0}input[type=checkbox]{width:24px;height:24px;flex:none;accent-color:var(--primary)}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row>*{min-width:0}.grow{flex:1 1 130px}.spread{justify-content:space-between}.stack{display:grid;gap:12px}.surface{background:var(--container);padding:12px;border-radius:var(--radius)}.warning{background:var(--error-bg);color:var(--on-error);padding:12px;border-radius:12px}.status{font-weight:600}.ok{color:var(--success)}.full{width:100%}.mono{font-family:ui-monospace,monospace;overflow-wrap:anywhere}.list{list-style:none;padding:0;margin:0}.list li{padding:8px 0;border-bottom:1px solid var(--outline);min-height:48px}.list li:last-child{border-bottom:0}progress{width:100%;height:8px;accent-color:var(--primary)}summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-weight:600}details{border-top:1px solid var(--outline);padding:4px 0}.details-body{padding:8px 0}.inline{display:inline}.subhead{font-weight:600;color:var(--muted)}#announcement{font-size:13px;min-height:44px;margin:0;color:var(--muted)}footer{border-top:1px solid var(--outline);font-size:12px;color:var(--muted)}body.bottom{display:flex;flex-direction:column;min-height:100dvh}body.bottom nav{order:4;border-top:1px solid var(--outline);border-bottom:0}body.bottom footer{order:5}body.bottom main{flex:1}body.bottom #announcement{order:3}dialog{max-width:calc(100% - 32px);width:360px;background:var(--surface);color:var(--text);border:1px solid var(--outline);border-radius:20px;padding:20px}dialog::backdrop{background:#0007}.error{color:var(--error)}@media(max-width:340px){header,main,footer,#announcement{padding-inline:12px}nav{padding-inline:4px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+</style></head><body><header><h1>Rewards Companion</h1><p class="demo">UX prototype · Synthetic data only</p><div id="context"></div></header><nav id="navigation" aria-label="Workspace"></nav><main id="workspace" tabindex="-1"></main><p id="announcement" role="status" aria-live="polite"></p><footer id="footer"></footer><script type="module">
+// Synthetic session contracts. Production requires document identity and durable attempt IDs.
+function immutable(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) immutable(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+function attemptIdentity(review) {
+  if (!review) return null;
+  const {campaign, id, code, generation, email, product, reward, terms} = review;
+  return {campaign, id, code, generation, email, product, reward, terms};
+}
+function matchesAttempt(review, attempt) {
+  return !!(review && attempt && ['campaign','id','code','generation','email','product','reward','terms'].every(key =>
+    Object.hasOwn(attempt,key) && review[key] === attempt[key]));
+}
+
+// Historical registry from R3 02/06. Not current stock or live compatibility.
+const campaigns = immutable([
+ {id:'CA1126VANW',name:'Walmart Canada',origin:'https://getmybonus.ca',path:'/CA1126VANW/en',products:['$100 Vanilla prepaid card'],rewards:['Walmart eGift Card'],merchant:['Walmart'],cents:1500,purchase:'Nov 26–29, 2026',deadline:'Nov 30, 2026',observations:8,dialog:'Purchase location'},
+ {id:'CA1126PKIZ',name:'On the Run / Parkland',origin:'https://prepaidrewards.ca',path:'/CA1126PKIZ',products:['$75 Vanilla Visa prepaid card'],rewards:['Zift Zillions of Gifts eGift Card'],merchant:['Zift Zillions of Gifts'],cents:1500,purchase:'Nov 20–Dec 7, 2026',deadline:'Dec 8, 2026',observations:14,dialog:'Purchased product'},
+ {id:'CA1126DTZFT',name:'Dollar Tree',origin:'https://bonusrewards.ca',path:'/CA1126DTZFT',products:['$50 yellow Zift Have Fun gift card'],rewards:['Zift Zillions of Gifts eGift Card'],merchant:['Zift Zillions of Gifts'],cents:1000,purchase:'Nov 2–Dec 31, 2026',deadline:'Jan 2, 2027',observations:18,dialog:'Purchased product',note:'Avondale participation inferred, not confirmed. Total cap 3,000; remaining stock unknown.'},
+ {id:'CA1126PZFT',name:'Petro-Canada',origin:'https://cardbonuses.com',path:'/CA1126PZFT',products:['$50 Zift Merry Christmas','$50 Zift Have Fun'],rewards:['Zift Have Fun eGift Card','Petro-Canada eGift Card'],merchant:['Zift Have Fun','Petro-Canada'],cents:1000,purchase:'Nov 17, 2026–Jan 12, 2027',deadline:'Jan 13, 2027',observations:21,dialog:'Purchased product and reward choice'}
+]);
+const campaignById = id => campaigns.find(c=>c.id===id);
+const money = cents => `CAD $${(cents/100).toFixed(2)}`;
+
+// Presentation commands only. Never write queue, rewards or transaction outcome.
+function reducePresentation(state, command) {
+  switch (command.type) {
+    case 'navigate':
+      if (['queue','rewards','campaigns','settings'].includes(command.screen)) state.screen=command.screen;
+      return true;
+    case 'view':
+      if (campaignById(command.id)) state.view=command.id;
+      return true;
+    case 'theme':
+      if (['system','light','dark'].includes(command.value)) state.theme=command.value;
+      return true;
+    case 'nav':
+      if (['top','bottom'].includes(command.value)) state.nav=command.value;
+      return true;
+    default: return false;
+  }
+}
+
+// Synthetic allowlist only. Legacy shape remains a 30 digit string.
+const fixtureCode = n => String(n).padStart(30,'0');
+const isFixtureCode = s => /^0{26}[0-9]{4}$/.test(s) && Number(s)>0;
+function parseCodes(raw) {
+ const tokens=String(raw).trim().split(/\s+/).filter(Boolean);
+ return {codes:tokens.filter(isFixtureCode),invalid:tokens.filter(x=>!isFixtureCode(x)).length};
+}
+const exportHeaders=Object.freeze(['Card Merchant','Value Recent','GC Number','GC PIN']);
+function rewardRows(rows) {return rows.map(r=>[r.cardMerchant,r.valueRecent,r.gcNumber,r.gcPin]);}
+function tsv(rows){return rewardRows(rows).map(r=>r.map(value=>String(value??'').replace(/[\t\r\n]+/g,' ').trim()).join('\t')).join('\n');}
+function csv(rows){return [exportHeaders,...rewardRows(rows)].map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(',')).join('\r\n');}
+
+// Pure synthetic reducer. No browser API, timing, storage, or network.
+const freshCache=()=>({queue:[],history:[],rewards:[],email:'demo@example.com',serial:true,clipboard:false});
+function initialState(generation=0){return {live:campaigns[0].id,view:campaigns[0].id,connection:'recognized',screen:'queue',caches:Object.fromEntries(campaigns.map(c=>[c.id,freshCache()])),phase:'ready',review:null,active:null,generation,notice:'Load demo codes to begin.',diagnostics:true,captures:0,theme:'system',nav:'top'};}
+const currentCache=s=>s.caches[s.live];
+const viewedCache=s=>s.caches[s.view];
+const counts=c=>Object.fromEntries(['queued','processing','pending','complete','error','duplicate'].map(x=>[x,c.queue.filter(r=>r.state===x).length]));
+const busy=s=>['running','awaiting','unresolved','capture-error'].includes(s.phase);
+const canReview=s=>s.connection==='recognized'&&s.live===s.view&&!busy(s)&&currentCache(s).queue.some(x=>x.state==='queued')&&!currentCache(s).queue.some(x=>x.state==='pending');
+const invalidate=s=>{s.review=null;s.generation++;};
+function pending(s,phase='unresolved'){const r=currentCache(s).queue.find(r=>r.id===s.active);if(r)r.state='pending';s.phase=phase;invalidate(s);}
+function interrupt(s){if(s.phase==='running'){pending(s);s.notice='Simulated submission outcome unknown. Later items blocked.';}else if(s.phase==='awaiting'||s.phase==='review'){s.phase='paused';invalidate(s);}}
+function verified(s){const c=currentCache(s),r=c.queue.find(r=>r.id===s.active),v=s.review,cp=campaignById(s.live);if(c.rewards.length>=999||c.history.length>=999){pending(s,'capture-error');return false;}if(!r||r.state!=='processing'||!v||v.code!==r.code||v.campaign!==s.live)return false;const card={cardMerchant:cp.merchant[v.reward],valueRecent:(cp.cents/100).toFixed(2),gcNumber:'DEMO-'+r.code.slice(-4),gcPin:'0000',sourceRedemptionCode:r.code,slug:s.live};c.rewards.push(card);c.history.push({code:r.code,last4:r.code.slice(-4),state:'complete'});r.state='complete';s.active=null;s.phase=c.serial&&c.queue.some(x=>x.state==='queued')?'ready':'paused';invalidate(s);s.notice='Simulated reward verified and saved. Review each next claim.';return true;}
+function reduce(previous,command){const s=structuredClone(previous),a=command,c=currentCache(s);
+ if(!a || typeof a.type!=='string')return s;
+ if(reducePresentation(s,a)){
+  if(a.type==='view'&&s.view!==previous.view&&s.phase==='review'){invalidate(s);s.phase='paused';}
+  return s;
+ }
+ switch(a.type){
+ case 'context':if(campaignById(a.id)&&!busy(s)){invalidate(s);s.live=a.id;s.view=a.id;s.phase=currentCache(s).queue.some(x=>x.state==='pending')?'unresolved':'ready';s.active=currentCache(s).queue.find(x=>x.state==='pending')?.id??null;s.notice='Simulated active campaign changed.';}break;
+ case 'connection':if(['recognized','unknown','disconnected'].includes(a.value)){interrupt(s);invalidate(s);s.connection=a.value;}break;
+ case 'import':{if(s.view!==s.live||busy(s))break;const {codes,invalid}=parseCodes(a.text);let added=0,dupes=0,overflow=0;for(const code of codes){if(c.queue.length>=999){overflow++;continue;}const duplicate=c.queue.some(x=>x.code===code&&x.state!=='error')||c.history.some(x=>x.code===code);c.queue.push({id:c.queue.length+1,code,state:duplicate?'duplicate':'queued'});duplicate?dupes++:added++;}if(s.phase==='review'){s.phase='ready';invalidate(s);}s.notice=`${added} queued · ${dupes} duplicates · ${invalid} rejected · ${overflow} over limit`;break;}
+ case 'email':if(s.view===s.live&&!busy(s)&&/^[a-z0-9._+-]+@example\.com$/i.test(a.value)){c.email=a.value;invalidate(s);if(s.phase==='review')s.phase='ready';s.notice='Demo email saved.';}else s.notice='Use a synthetic @example.com email.';break;
+ case 'preference':if(s.view===s.live&&!busy(s)&&['serial','clipboard'].includes(a.key))c[a.key]=!!a.value;break;
+ case 'review':if(canReview(s)){const r=c.queue.find(x=>x.state==='queued'),cp=campaignById(s.live);s.phase='review';s.review={id:r.id,code:r.code,campaign:s.live,generation:++s.generation,email:c.email,product:cp.products.length===1?0:null,reward:cp.rewards.length===1?0:null,terms:false};}break;
+ case 'reviewField': {
+  if (s.phase !== 'review' || !s.review || s.view !== s.live) break;
+  const cp = campaignById(s.live);
+  const valid = a.key === 'terms' ? typeof a.value === 'boolean' :
+    ['product','reward'].includes(a.key) && Number.isInteger(a.value) &&
+    a.value >= 0 && a.value < (a.key === 'product' ? cp.products.length : cp.rewards.length);
+  if (valid && s.review[a.key] !== a.value) {
+    s.review[a.key] = a.value;
+    if (a.key !== 'terms') s.review.terms = false;
+    s.review.generation = ++s.generation;
+  }
+  break;
+ }
+ case 'cancelReview':if(s.phase==='review'){invalidate(s);s.phase='ready';}break;
+ case 'authorize':{const v=s.review;if(s.phase!=='review'||!canReview(s)||!v||!matchesAttempt(v,a.attempt)||v.campaign!==s.live||v.email!==c.email||v.product===null||v.reward===null||!v.terms)break;const r=c.queue.find(x=>x.id===v.id&&x.code===v.code&&x.state==='queued');if(!r)break;r.state='processing';s.active=r.id;s.phase='running';s.notice='Authorized demo attempt. No merchant request.';break;}
+ case 'outcome':if(s.phase==='running'&&s.connection==='recognized'&&matchesAttempt(s.review,a.attempt)&&s.review.campaign===s.live&&s.review.id===s.active){if(a.value==='success')verified(s);else if(a.value==='unknown')pending(s);else if(a.value==='capture-error')pending(s,'capture-error');else if(a.value==='captcha'){c.queue.find(x=>x.id===s.active).state='queued';s.active=null;s.phase='awaiting';invalidate(s);}else if(a.value==='error'){const r=c.queue.find(x=>x.id===s.active);r.state='error';s.active=null;s.phase='paused';invalidate(s);s.notice='Simulated definitive rejection. Review before continuing.';}}break;
+ case 'pause':interrupt(s);break;
+ case 'manualDone':if(s.phase==='awaiting'&&s.connection==='recognized'){s.phase='paused';s.notice='Demo manual step completed. Review again.';}break;
+ case 'diagnostics':s.diagnostics=!!a.value;break;
+ case 'capture':if(s.connection==='recognized')s.captures++;break;
+ case 'clearDiagnostics':s.captures=0;break;
+ case 'clear':if(campaignById(a.campaign)&&!busy(s)&&s.phase!=='review'&&!s.caches[a.campaign].queue.some(x=>x.state==='pending')){const target=s.caches[a.campaign];if(a.key==='queue')target.queue=[];if(a.key==='history')target.history=[];if(a.key==='rewards')target.rewards=[];if(a.key==='all')s.caches[a.campaign]=freshCache();}break;
+ case 'reset':return initialState(s.generation+1);
+ }if(s.diagnostics&&s.connection==='recognized'&&(s.live!==previous.live||s.connection!==previous.connection||s.phase!==previous.phase))s.captures++;return s;}
+function makeProvider(seed=initialState()){
+ let state=immutable(structuredClone(seed));
+ const listeners=new Set();
+ return {
+  getSnapshot:()=>state,
+  subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},
+  dispatch(command){state=immutable(reduce(state,command));for(const fn of listeners)fn(state);}
+ };
+}
+
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const button=(label,action,{primary=false,disabled=false,extra='',cls=''}={})=>`<button type="button" class="${primary?'primary ':''}${cls}" data-action="${esc(action)}" ${disabled?'disabled':''} ${extra}>${esc(label)}</button>`;
+const options=(values,selected)=>values.map((v,i)=>`<option value="${i}" ${i===selected?'selected':''}>${esc(v)}</option>`).join('');
+const check=(id,label,checked,disabled=false)=>`<label class="check"><input type="checkbox" id="${id}" ${checked?'checked':''} ${disabled?'disabled':''}>${esc(label)}</label>`;
+const masked=s=>`•••• ${esc(s.slice(-4))}`;
+
+function queueView(s,local){const c=viewedCache(s),cp=campaignById(s.view),n=counts(c),historical=s.view!==s.live,locked=busy(s)||historical;const rows=c.queue.filter(r=>local.filter==='all'||r.state===local.filter);const page=Math.min(local.page,Math.max(0,Math.ceil(rows.length/25)-1));const active=c.queue.find(r=>r.id===s.active);let action='';
+ if(historical)action='<p class="warning">Cached campaign only. No live actions.</p>';
+ else if(['unresolved','capture-error'].includes(s.phase))action=`<section class="warning"><h3>${s.phase==='capture-error'?'Reward capture not verified':'Submission outcome unknown'}</h3><p>Later claims are blocked. No reward counted for this item.</p><p>${active?masked(active.code):''} · Inspect merchant response or email in actual use. This prototype cannot reconcile real claims.</p>${button('Keep unresolved','keep')}</section>`;
+ else if(s.phase==='running')action=`<section class="surface"><h3>Authorized demo attempt</h3><p>${active?masked(active.code):''} · Choose a synthetic outcome</p>${button('Pause','pause',{primary:true,cls:'full'})}<details><summary>Demo outcomes (test controls)</summary><div class="stack">${['success','unknown','capture-error','captcha','error'].map(x=>button({'success':'Verified reward','unknown':'Timeout / unknown outcome','capture-error':'Persistence failure','captcha':'Manual step before submission','error':'Definitive error'}[x],'outcome',{extra:`data-value="${x}"`})).join('')}</div></details></section>`;
+ else if(s.phase==='awaiting')action=`<section class="surface"><h3>Manual action required</h3><p>Complete the simulated native merchant step. No CAPTCHA is performed here.</p>${button('Demo manual step complete','manualDone',{primary:true})}${button('Pause','pause')}</section>`;
+ else if(s.phase==='review'&&s.review){const v=s.review;action=`<section class="surface stack"><h3>Review claim · ${esc(cp.name)}</h3><p class="mono">${esc(v.code)}</p><div><label for="product">Purchased product</label><select id="product"><option value="" disabled ${v.product===null?'selected':''}>Choose product</option>${options(cp.products,v.product)}</select></div><div><label for="reward">Reward · ${money(cp.cents)} expected</label><select id="reward"><option value="" disabled ${v.reward===null?'selected':''}>Choose reward</option>${options(cp.rewards,v.reward)}</select></div><p>Email: ${esc(v.email)}</p>${check('terms','I reviewed the demo product, reward and terms',v.terms)}${button('Authorize simulated claim','authorize',{primary:true,disabled:!v.terms||v.product===null||v.reward===null||!canReview(s),cls:'full'})}${button('Cancel review','cancelReview')}</section>`;}
+ else action=button(s.phase==='paused'?'Review & resume':'Review & start queue','review',{primary:true,disabled:!canReview(s),cls:'full'});
+ return `<section class="stack"><div><h2>Queue</h2><p class="muted">${n.queued} ready · ${n.complete} complete · ${n.pending} unresolved · ${n.duplicate} duplicate · ${n.error} error</p><progress aria-label="Completed queue items" max="${Math.max(1,c.queue.length)}" value="${n.complete}"></progress></div>${busy(s)?action:''}<div><label for="codes">Redemption barcodes</label><textarea id="codes" spellcheck="false" placeholder="Paste synthetic 30-digit demo codes" ${locked?'disabled':''}>${esc(local.draft)}</textarea><div class="row">${button('Load demo codes','sample',{disabled:locked,cls:'grow'})}${button('Add to queue','import',{primary:true,disabled:locked,cls:'grow'})}</div><p class="muted">Demo codes only. No real card data. ${c.queue.length}/999 records.</p><div class="row">${button('Demo clipboard import','clipboard',{disabled:locked,cls:'grow'})}</div></div><div><label for="email">Redemption email</label><div class="row"><input class="grow" id="email" type="email" value="${esc(c.email)}" ${locked?'disabled':''}>${button('Save','email',{disabled:locked})}</div>${check('serial','Serial queue processing (review each claim)',c.serial,locked)}${check('clipboardPref','Remember clipboard preference',c.clipboard,locked)}</div>${!busy(s)?action:''}<section><div class="row spread"><h3>Queue records</h3><label for="filter" class="muted">Filter</label><select id="filter"><option value="all">All records</option>${['queued','processing','pending','complete','error','duplicate'].map(x=>`<option value="${x}" ${local.filter===x?'selected':''}>${x}</option>`).join('')}</select></div><ul class="list">${rows.slice(page*25,page*25+25).map(r=>`<li class="row spread"><span class="mono">${local.revealed===r.id?esc(r.code):masked(r.code)}</span><span class="status">${esc(r.state)}</span>${button(local.revealed===r.id?'Hide':'Reveal','revealQueue',{extra:`data-id="${r.id}"`,cls:'text'})}</li>`).join('')||'<li class="muted">No matching items.</li>'}</ul><div class="row spread">${button('Previous','prev',{disabled:page===0})}<span>${page+1}/${Math.max(1,Math.ceil(rows.length/25))}</span>${button('Next','next',{disabled:(page+1)*25>=rows.length})}</div>${button('Clear queue','clear',{extra:'data-key="queue"',disabled:busy(s)||s.phase==='review',cls:'text'})}</section></section>`;
+}
+
+function rewardsView(s,l){const c=viewedCache(s),history=l.rewardTab==='history',records=(history?c.history:c.rewards).filter(r=>!l.search||[r.cardMerchant,r.code,r.sourceRedemptionCode,r.gcNumber].some(x=>x?.toLowerCase().includes(l.search.toLowerCase())));const page=Math.min(l.page,Math.max(0,Math.ceil(records.length/25)-1));return `<section class="stack"><h2>Rewards</h2><div class="surface"><h3>${money(c.rewards.reduce((a,r)=>a+Math.round(Number(r.valueRecent)*100),0))}</h3><p>${c.rewards.length} verified demo rewards · Pending excluded</p></div><div class="row">${button('Gift cards','rewardTab',{primary:!history,extra:'data-value="cards"',cls:'grow'})}${button('Redemption history','rewardTab',{primary:history,extra:'data-value="history"',cls:'grow'})}</div><div><label for="search">Search ${history?'history':'rewards'}</label><div class="row"><input class="grow" id="search" value="${esc(l.search)}" placeholder="Merchant or demo identifier">${button('Search','search')}</div></div>${!history?`<div class="row">${button('Copy TSV','copy',{disabled:!c.rewards.length,cls:'grow'})}${button('Export CSV','csv',{disabled:!c.rewards.length,cls:'grow'})}</div><p class="muted">Exports all verified demo cards in the selected campaign; exact v15 columns.</p>`:''}<ul class="list">${records.slice(page*25,page*25+25).map((r,i)=>{const k=page*25+i,open=l.rewardReveal===k;return `<li><div class="row spread"><strong>${esc(history?'Redemption complete':r.cardMerchant)}</strong>${history?'':money(Number(r.valueRecent)*100)}</div><p class="mono">${history?(open?esc(r.code||'Legacy record: full code unavailable'):masked(r.last4||'')):(open?`${esc(r.gcNumber)} · PIN ${esc(r.gcPin)}`:masked(r.gcNumber)+' · PIN ••••')}</p>${button(open?'Hide':'Reveal','revealReward',{extra:`data-id="${k}"`,cls:'text'})}</li>`;}).join('')||'<li class="muted">No verified records.</li>'}</ul><div class="row spread">${button('Previous','prev',{disabled:page===0})}<span>${page+1}/${Math.max(1,Math.ceil(records.length/25))}</span>${button('Next','next',{disabled:(page+1)*25>=records.length})}</div>${button(history?'Clear redemption history':'Clear gift cards','clear',{extra:`data-key="${history?'history':'rewards'}"`,disabled:busy(s)||s.phase==='review',cls:'text'})}</section>`;}
+
+function campaignsView(s){return `<section class="stack"><h2>Campaigns</h2><p class="muted">Historical evidence from Nov 26–27, 2026. No live inventory or compatibility verification.</p>${campaigns.map(c=>`<article class="surface"><h3>${esc(c.name)}</h3><p>${esc(c.products.join(' or '))} → ${money(c.cents)} ${esc(c.rewards.join(' or '))}</p><p>Purchase: ${esc(c.purchase)}<br>Claim by: ${esc(c.deadline)}</p><p class="muted">Stock unknown · E2 candidate entry evidence · ${c.observations} historical snapshots · no success snapshot</p>${c.note?`<p>${esc(c.note)}</p>`:''}<details><summary>Evidence and links</summary><p>Identity: ${esc(c.id)}<br>${esc(c.origin+c.path)}</p><p>Observed dialog: ${esc(c.dialog)}. Live actionability unverified.</p><p>Terms, FAQ and support paths: see source registry in docs/02.</p></details><div class="row">${button('View cached records','cached',{extra:`data-id="${c.id}"`})}${button(s.live===c.id?'Demo active campaign':'Simulate active campaign','context',{disabled:busy(s)||s.live===c.id,extra:`data-id="${c.id}"`})}</div></article>`).join('')}${button('Diagnostics','diagnosticLink')}</section>`;}
+
+function settingsView(s){return `<section class="stack"><h2>Settings</h2><div><label for="theme">Appearance</label><select id="theme">${['system','light','dark'].map(x=>`<option ${s.theme===x?'selected':''}>${x}</option>`).join('')}</select><label for="navPosition">Navigation candidate</label><select id="navPosition"><option value="top" ${s.nav==='top'?'selected':''}>Top destinations</option><option value="bottom" ${s.nav==='bottom'?'selected':''}>Bottom destinations</option></select></div><section class="surface"><h3>Campaign preferences</h3><p>Email, serial processing and clipboard are editable in Queue for the active campaign. Preferences do not authorize claims.</p></section><section id="diagnostics" class="surface stack"><h3>Diagnostics · simulation</h3>${check('diagnosticsPref','Automatic recording preference',s.diagnostics)}<p>Demo snapshots: ${s.captures}. No browsing data collected.</p>${button('Capture demo snapshot','capture',{disabled:s.connection!=='recognized'})}${button('Export demo diagnostics','diagnosticExport',{disabled:!s.captures})}${button('Clear demo diagnostics','clearDiagnostics',{disabled:!s.captures})}<p class="muted">Broad discovery not provided; scoped permission design deferred.</p></section><section><h3>Data management</h3><p>Selected cache: ${esc(s.view)}. No legacy data accessed.</p>${button('Clear selected demo cache','clear',{extra:'data-key="all"',disabled:busy(s)||s.phase==='review'})}</section><section class="surface stack"><h3>Prototype test controls</h3><label for="connection">Simulated connection</label><select id="connection">${['recognized','unknown','disconnected'].map(x=>`<option ${s.connection===x?'selected':''}>${x}</option>`).join('')}</select>${button('Load 999 demo queue records','large',{disabled:busy(s)||s.view!==s.live})}${button('Reset demo session','reset')}<p class="muted">In-memory only. Closing or reloading resets the demo. No real storage migration or native integration.</p></section></section>`;}
+
+const provider=makeProvider(),$=id=>document.getElementById(id),state=()=>provider.getSnapshot();
+const local={draft:'',filter:'all',page:0,revealed:null,rewardReveal:null,rewardTab:'cards',search:''};
+const resetView=()=>Object.assign(local,{page:0,revealed:null,rewardReveal:null,filter:'all',search:''});
+let feedback='';
+const announce=text=>{feedback=text;$('announcement').textContent=text;};
+function render(){const s=state(),c=campaignById(s.live),v=campaignById(s.view),prev=document.activeElement,focusId=prev?.id,focusAction=prev?.dataset.action,focusData=prev?.dataset.id,focusValue=prev?.dataset.value;
+ document.documentElement.dataset.theme=s.theme;document.body.classList.toggle('bottom',s.nav==='bottom');
+ if(s.nav==='bottom')$('footer').before($('navigation'));else $('workspace').before($('navigation'));
+ $('context').innerHTML=`<div class="surface"><div class="row spread"><strong>${esc(c.name)}</strong><span class="muted">${s.connection==='recognized'?'Demo recognized':s.connection==='unknown'?'Unknown page':'Disconnected'}</span></div><p>${esc(c.products.join(' / '))} · ${money(c.cents)} expected</p><p class="muted">Claim by ${esc(c.deadline)} · ${s.phase==='ready'?'Ready for demo':esc(s.phase)}</p><label for="cacheView">View campaign cache</label><select id="cacheView">${campaigns.map(x=>`<option value="${x.id}" ${x.id===v.id?'selected':''}>${esc(x.name)}${x.id===c.id?' (active)':''}</option>`).join('')}</select>${s.view!==s.live?'<p class="warning">Historical cache: operational actions disabled.</p>':''}</div>`;
+ $('navigation').innerHTML=['queue','rewards','campaigns','settings'].map(x=>button(x[0].toUpperCase()+x.slice(1),'navigate',{extra:`data-value="${x}" ${s.screen===x?'aria-current="page"':''}`})).join('');
+ $('workspace').innerHTML=({queue:queueView,rewards:rewardsView,campaigns:campaignsView,settings:settingsView}[s.screen])(s,local);
+ $('announcement').textContent=feedback||s.notice;$('footer').textContent=`Prototype 0.1.0 · Diagnostic preference ${s.diagnostics?'on':'off'} · No merchant connection`;
+ // Restore focus after state projection. On disappearing control, move to workspace.
+ const target=focusId?$(focusId):focusAction?[...document.querySelectorAll('[data-action]')].find(el=>el.dataset.action===focusAction&&el.dataset.id===focusData&&el.dataset.value===focusValue):null;
+ if(target&&!target.disabled)target.focus({preventScroll:true});else if(focusId||focusAction)$('workspace').focus({preventScroll:true});
+}
+const dispatch=(type,fields={})=>{feedback='';provider.dispatch({type,...fields});};provider.subscribe(render);
+function confirmScope(message,fn){const dialog=document.createElement('dialog');dialog.innerHTML=`<h2>Confirm demo deletion</h2><p>${esc(message)}</p><form method="dialog" class="row"><button value="cancel" autofocus>Cancel</button><button class="primary" value="confirm">Confirm</button></form>`;document.body.append(dialog);const returnTo=document.activeElement;dialog.addEventListener('close',()=>{const confirmed=dialog.returnValue==='confirm';dialog.remove();if(confirmed)fn();else returnTo?.focus();},{once:true});dialog.showModal();}
+function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);announce('Demo download requested.');}
+function syntheticDiagnostics(){return JSON.stringify({schema:'demo-only/1',snapshotCount:state().captures,synthetic:true},null,2);}
+function navigate(screen){resetView();dispatch('navigate',{screen});$('workspace').focus();}
+document.addEventListener('input',e=>{if(e.target.id==='codes')local.draft=e.target.value;});
+document.addEventListener('change',e=>{const x=e.target;switch(x.id){case 'cacheView':resetView();local.draft='';dispatch('view',{id:x.value});break;case 'filter':local.filter=x.value;local.page=0;render();break;case 'serial':dispatch('preference',{key:'serial',value:x.checked});break;case 'clipboardPref':dispatch('preference',{key:'clipboard',value:x.checked});break;case 'terms':dispatch('reviewField',{key:'terms',value:x.checked});break;case 'product':case 'reward':dispatch('reviewField',{key:x.id,value:Number(x.value)});break;case 'theme':case 'connection':dispatch(x.id,{value:x.value});break;case 'navPosition':dispatch('nav',{value:x.value});break;case 'diagnosticsPref':dispatch('diagnostics',{value:x.checked});break;}});
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const {action,value,id,key}=b.dataset,s=state();switch(action){
+ case 'navigate':navigate(value);break;
+ case 'sample':local.draft=[1,2,3,2].map(fixtureCode).join('\n')+'\ninvalid';render();$('codes').focus();break;
+ case 'clipboard':dispatch('import',{text:[4,5].map(fixtureCode).join('\n')});announce('Simulated clipboard import. '+state().notice);break;
+ case 'import':{const raw=local.draft;local.draft='';dispatch('import',{text:raw});break;}
+ case 'email':dispatch('email',{value:$('email').value});break;
+ case 'review':case 'cancelReview':case 'pause':case 'manualDone':dispatch(action);break;
+ case 'authorize':dispatch(action,{attempt:attemptIdentity(s.review)});break;
+ case 'outcome':dispatch(action,{value,attempt:attemptIdentity(s.review)});break;
+ case 'keep':announce('Kept unresolved. Later claims remain blocked.');break;
+ case 'prev':local.page=Math.max(0,local.page-1);local.revealed=null;local.rewardReveal=null;render();break;
+ case 'next':local.page++;local.revealed=null;local.rewardReveal=null;render();break;
+ case 'revealQueue':local.revealed=local.revealed===Number(id)?null:Number(id);render();break;
+ case 'revealReward':local.rewardReveal=local.rewardReveal===Number(id)?null:Number(id);render();break;
+ case 'rewardTab':resetView();local.rewardTab=value;render();break;
+ case 'search':local.search=$('search').value;local.page=0;local.rewardReveal=null;render();break;
+ case 'cached':resetView();local.draft='';dispatch('view',{id});navigate('queue');break;
+ case 'context':resetView();local.draft='';dispatch('context',{id});navigate('queue');break;
+ case 'diagnosticLink':navigate('settings');$('diagnostics').scrollIntoView();break;
+ case 'copy':try{await navigator.clipboard.writeText(tsv(viewedCache(s).rewards));announce('Copied synthetic TSV.');}catch{announce('Clipboard denied. Use CSV export instead.');}break;
+ case 'csv':download('demo_gift_cards_'+s.view+'.csv','\uFEFF'+csv(viewedCache(s).rewards),'text/csv;charset=utf-8');break;
+ case 'capture':dispatch(action);announce('Synthetic snapshot recorded.');break;
+ case 'diagnosticExport':download('demo_diagnostics.json',syntheticDiagnostics(),'application/json');break;
+ case 'clearDiagnostics':confirmScope('Delete only demo diagnostic counters?',()=>dispatch(action));break;
+ case 'clear':confirmScope(`Clear ${key} in ${s.view}? Only synthetic records are affected.`,()=>{resetView();dispatch('clear',{key,campaign:s.view});});break;
+ case 'large':dispatch('import',{text:Array.from({length:999},(_,i)=>fixtureCode(i+1)).join('\n')});navigate('queue');break;
+ case 'reset':confirmScope('Reset all synthetic session data?',()=>{resetView();local.draft='';dispatch('reset');});break;
+ }});
+render();
+
+</script></body></html>

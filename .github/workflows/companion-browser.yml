@@ -1,0 +1,19 @@
+name: Companion synthetic browser verification
+on:
+  push:
+    branches: [companion-dev]
+    paths: ['companion-preview/**', '.github/workflows/companion-browser.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.51.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python companion-preview/browser_test.py
