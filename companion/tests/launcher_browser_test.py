@@ -76,5 +76,46 @@ with sync_playwright() as p:
     setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("Testing builds").is_visible();button("Cancel").click();gone()
     setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
     page.emulate_media(color_scheme="dark");setup();ready();assert page.get_by_role("dialog").evaluate("(e)=>getComputedStyle(e).backgroundColor")=="rgb(33, 35, 43)";page.keyboard.press("Escape");gone()
+    # Targeted UX/lifecycle regressions, preserving the original scenarios.
+    page.emulate_media(color_scheme="light")
+    setup();ready()
+    assert page.get_by_text(manifest["dev"]["version"],exact=False).is_visible()
+    assert page.get_by_role("status").inner_text()==""
+    page.keyboard.press("Tab");assert button("Dev · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.keyboard.press("Shift+Tab");assert button("Stable · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.keyboard.press("Escape");gone();check(0)
+    setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});ready()
+    page.get_by_text("Testing builds").click()
+    assert page.get_by_text(entry("test")["version"],exact=False).is_visible()
+    assert page.get_by_text("Testing builds").evaluate("(e)=>getComputedStyle(e).display")=="list-item"
+    page.keyboard.press("Escape");gone()
+    setup(delay=True);button("Dev · 0.6.0").click()
+    assert page.get_by_role("status").inner_text()=="Loading Dev..."
+    button("Cancel").click();gone()
+    page.evaluate("window.run()");ready();page.wait_for_timeout(500);check(0)
+    assert page.get_by_role("status").inner_text()==""
+    page.keyboard.press("Escape");gone()
+    setup(fail=True);button("Dev · 0.6.0").click();button("Retry").wait_for()
+    assert page.get_by_role("status").inner_text().startswith("Dev:")
+    assert button("Retry").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
+    focus_source="window.launches++;const b=document.createElement('button');b.id='launched-focus';document.body.append(b);b.focus();"
+    focus_manifest={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(focus_source.encode()).hexdigest()}}
+    setup(m=focus_manifest,body=focus_source);button("Dev · 0.6.0").click();gone()
+    assert page.evaluate("document.activeElement.id")=="launched-focus"
+    for width in (320,360,400,480,160):
+        page.set_viewport_size({"width":width,"height":480})
+        setup();ready()
+        dialog=page.get_by_role("dialog")
+        assert dialog.bounding_box()["width"]<=width
+        assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
+        assert button("Stable · v15").bounding_box()["height"]>=48
+        assert button("Cancel").bounding_box()["height"]>=48
+        page.keyboard.press("Escape");gone()
+    page.set_viewport_size({"width":320,"height":480})
+    page.emulate_media(forced_colors="active");setup();ready()
+    assert button("Stable · v15").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
+    page.keyboard.press("Escape");gone()
+    page.emulate_media(forced_colors="none")
     browser.close()
-print("16 synthetic launcher scenarios PASS")
+print("16 existing + 7 targeted launcher scenario groups PASS")
