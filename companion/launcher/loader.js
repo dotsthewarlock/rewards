@@ -70,7 +70,7 @@
         manifest=value;stable.textContent='Stable · v15';dev.textContent=candidate(value.dev,'dev')?'Dev · '+value.dev.version.split('-dev-')[0]:'Dev unavailable';
         meta.textContent=candidate(value.dev,'dev')?value.dev.version+' · Testing only; not live accepted.':'Development unavailable. Stable remains available.';
         if(testOK(value.test)){test.textContent='Test · '+value.test.version.split('-test-')[0];purpose.textContent=value.test.version+' · '+value.test.purpose;}
-        status.textContent='';
+        status.textContent='Choose a channel.';
       }else{
         const bytes=await(await get(channel.path,controller)).arrayBuffer();
         if(!active(controller))return;

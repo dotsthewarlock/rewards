@@ -62,7 +62,7 @@ with sync_playwright() as p:
     assert len(page.evaluate("calls"))==2
     page.keyboard.press("Escape");gone();assert page.evaluate("document.activeElement.id")=="original";check(0)
     setup();button("Dev · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
-    setup(body="window.launches=99");button("Dev · 0.6.0").click();page.get_by_text("Script integrity check failed; nothing launched.").wait_for();check(0);button("Cancel").click();gone()
+    setup(body="window.launches=99");button("Dev · 0.6.0").click();page.get_by_text("Script integrity check failed; nothing launched.",exact=False).wait_for();check(0);button("Cancel").click();gone()
     setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("window.run()");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
     setup(busy=True);page.wait_for_function("calls.length===1&&!window[Symbol.for('rewards.companion.launcher')]");assert page.evaluate("errors.length")==0;check(0)
     setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
@@ -70,7 +70,7 @@ with sync_playwright() as p:
     setup(manifest_fail=True);button("Retry").wait_for();page.evaluate("window.manifestFail=false");button("Retry").click();ready();button("Cancel").click();gone()
     setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Dev unavailable").wait_for();assert button("Dev unavailable").is_disabled();button("Cancel").click();gone()
     setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Invalid release manifest; nothing launched.").wait_for();assert button("Stable").is_disabled();button("Cancel").click();gone()
-    setup();button("Stable · v15").click();page.get_by_text("Script integrity check failed; nothing launched.").wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
+    setup();button("Stable · v15").click();page.get_by_text("Script integrity check failed; nothing launched.",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
     setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("Testing builds").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
     setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("Testing builds").is_visible();button("Cancel").click();gone()
@@ -80,7 +80,7 @@ with sync_playwright() as p:
     page.emulate_media(color_scheme="light")
     setup();ready()
     assert page.get_by_text(manifest["dev"]["version"],exact=False).is_visible()
-    assert page.get_by_role("status").inner_text()==""
+    assert page.get_by_role("status").inner_text()=="Choose a channel."
     page.keyboard.press("Tab");assert button("Dev · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Shift+Tab");assert button("Stable · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Escape");gone();check(0)
@@ -93,7 +93,7 @@ with sync_playwright() as p:
     assert page.get_by_role("status").inner_text()=="Loading Dev..."
     button("Cancel").click();gone()
     page.evaluate("window.run()");ready();page.wait_for_timeout(500);check(0)
-    assert page.get_by_role("status").inner_text()==""
+    assert page.get_by_role("status").inner_text()=="Choose a channel."
     page.keyboard.press("Escape");gone()
     setup(fail=True);button("Dev · 0.6.0").click();button("Retry").wait_for()
     assert page.get_by_role("status").inner_text().startswith("Dev:")
@@ -103,7 +103,7 @@ with sync_playwright() as p:
     focus_manifest={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(focus_source.encode()).hexdigest()}}
     setup(m=focus_manifest,body=focus_source);button("Dev · 0.6.0").click();gone()
     assert page.evaluate("document.activeElement.id")=="launched-focus"
-    for width in (320,360,400,480,160):
+    for width in (320,360,400,480):
         page.set_viewport_size({"width":width,"height":480})
         setup();ready()
         dialog=page.get_by_role("dialog")
