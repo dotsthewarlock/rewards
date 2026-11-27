@@ -27,3 +27,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 independent verification architect review (2026-11-27)](2026-11-27_V0.2_independent-review.md): CI retry and handoff verified, next independent UX/acceptance priorities.
 
 - [V0.2 workspace parity developer handoff (2026-11-27)](2026-11-27_V0.2_workspace-parity.md): masked browse, explicit reveal, shared UI accessibility/diagnostics and acceptance evidence.
+
+- [V0.2 workspace parity architect review (2026-11-27)](2026-11-27_V0.2_workspace-review.md): final CI verified, single-record privacy/stale-selection correction, stream navigation convention.
