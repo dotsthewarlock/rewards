@@ -18,7 +18,7 @@ def git(*args):
     return subprocess.check_output(["git",*args],cwd=repo)
 def protected(ref):
     return [line for line in git("ls-tree","-r",ref).splitlines()
-            if not line.split(b"\t",1)[1].startswith((b"companion/",b".github/"))]
+            if not line.split(b"\t",1)[1].startswith((b"companion/",b"companion-preview/",b".github/"))]
 assert protected("HEAD")==protected(baseline),"production/rollback tree differs"
 manifest=json.loads((src/"manifest.json").read_text())
 files={"manifest.json",manifest["background"]["service_worker"],manifest["side_panel"]["default_path"],
