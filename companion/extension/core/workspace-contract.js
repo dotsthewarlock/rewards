@@ -19,5 +19,18 @@
   if(!has(op))throw Error('unsupported-command');
   return {...fields,type:workspaceType,op};
  }
- globalThis.RewardsWorkspaceContract=Object.freeze({workspaceType,observationType,operations,extensionOnly,has,isScoped,contentType,isContentType,sameTarget,message});
+ // A target epoch fences exact recognized root and stage replacement even
+ // within the same document/URL. Token creation is supplied by the adapter.
+ function contextEpoch(makeToken){
+  let token=makeToken(),scope=null,initialized=false;
+  function sync(id){
+   const next=id?.status==='recognized'?[id.root,id.origin,id.campaign,id.stage]:null;
+   const changed=initialized&&(scope===null?next!==null:next===null||scope.some((v,i)=>v!==next[i]));
+   if(changed)token=makeToken();
+   scope=next;initialized=true;return changed;
+  }
+  function reset(){token=makeToken();scope=null;initialized=false;}
+  return Object.freeze({get token(){return token;},sync,reset});
+ }
+ globalThis.RewardsWorkspaceContract=Object.freeze({contextEpoch,workspaceType,observationType,operations,extensionOnly,has,isScoped,contentType,isContentType,sameTarget,message});
 })();

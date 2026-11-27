@@ -14,14 +14,15 @@ function launchBookmarklet(markup,css){
  const close=document.createElement('button');close.type='button';close.textContent='Close workspace';
  close.addEventListener('click',()=>{host.dispatchEvent(new Event('rewards-companion-close'));host.remove();});shell.prepend(close);
  root.append(style,shell);document.body.append(host);
- const documentToken=crypto.randomUUID();let prepared=null;
+ const epoch=W.contextEpoch(()=>crypto.randomUUID());let prepared=null;
  const clearPrepared=()=>{prepared?.cancel();prepared=null;};
  host.addEventListener('rewards-companion-close',clearPrepared);
  close.addEventListener('click',clearPrepared);
  window.addEventListener('pagehide',()=>{host.dispatchEvent(new Event('rewards-companion-close'));host.remove();},{once:true});
+ const syncContext=()=>{const id=D.identity(document);if(epoch.sync(id))clearPrepared();return id;};
  const inspect=()=>{
-   const report=D.report(document),recognized=report?.status==='recognized';
-   const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken}:null;
+   syncContext();const report=D.report(document),recognized=report?.status==='recognized';
+   const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken:epoch.token}:null;
    return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
  };
  const request=async(op,fields={})=>{
@@ -30,10 +31,10 @@ function launchBookmarklet(markup,css){
    if(op==='inspect')return current;
    if(W.isScoped(op)){
      const t=fields.target,c=current.target;
-     if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
+     if(!W.sameTarget(t,c))return {ok:false,reason:'context-changed'};
      if(op==='prepareFinal'){
        clearPrepared();
-       const valid=()=>host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+       const valid=()=>host.isConnected&&!!syncContext()&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
        const binding=globalThis.RewardsForeground.prepareFinal(document,localStorage,navigator.locks,c,valid);
        if(!binding.ok)return binding;
        prepared=binding;
@@ -48,14 +49,14 @@ function launchBookmarklet(markup,css){
      if(op==='revealReward')return L.revealReward(localStorage,c.campaign,fields.snapshot,fields.index);
      if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
      if(op==='reconcileSuccess'){
-       const current=()=>host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+       const current=()=>host.isConnected&&!!syncContext()&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
        return globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,c,fields.attemptId,current);
      }
      if(op==='editCache'){
        clearPrepared();
        const current=()=>{
-         const now=D.report(document);
-         return host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===c.origin&&now.campaign===c.campaign;
+         const now=syncContext();
+         return host.isConnected&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===c.origin&&now.campaign===c.campaign;
        };
        return L.editCache(localStorage,navigator.locks,c.campaign,fields.edit,fields.value,current);
      }

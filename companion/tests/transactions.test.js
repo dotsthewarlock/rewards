@@ -109,3 +109,32 @@ test('pending selection is masked, attempt-specific and absent without durable i
  await reconcile(s);
  assert.equal(T.pendingSelection(s,slug),null);
 });
+
+
+test('capture readback mismatch at each critical write keeps intent and allows explicit exact reconciliation',async()=>{
+ for(const field of ['giftcards','history','queue','active']){
+  const s=store();await start(s);
+  const set=s.setItem.bind(s),remove=s.removeItem.bind(s);
+  s.setItem=(k,v)=>{if(k!==key(field))set(k,v);};
+  s.removeItem=k=>{if(k!==key(field))remove(k);};
+  assert.equal((await reconcile(s)).reason,'capture-unknown');assert.ok(read(s,'active'));
+  assert.equal((await start(s,()=>{throw Error('must not invoke')})).reason,'unresolved');
+  s.setItem=set;s.removeItem=remove;
+  assert.deepEqual(await reconcile(s),{ok:true,status:'complete'});
+  assert.equal(read(s,'giftcards').length,1);assert.equal(read(s,'history').length,1);
+  assert.equal(read(s,'queue')[1].state,'queued');assert.equal(s.getItem(key('active')),null);
+ }
+});
+test('two overlapping owners cannot both enter the same durable attempt',async()=>{
+ const s=store();let held=false,calls=0;
+ const locks={request:async(n,o,fn)=>{
+  assert.equal(n,L.editLock);assert.deepEqual(o,{mode:'exclusive',ifAvailable:true});
+  if(held)return fn(null);held=true;
+  try{return await fn({});}finally{held=false;}
+ }};
+ const invoke=()=>{calls++;return true;};
+ const [a,b]=await Promise.all([T.startAttempt(s,locks,review,()=>true,invoke),
+  T.startAttempt(s,locks,{...review,attemptId:'00000000-0000-0000-0000-000000000005'},()=>true,invoke)]);
+ assert.deepEqual(a,{ok:true,status:'pending'});assert.equal(b.reason,'busy');assert.equal(calls,1);
+ assert.equal(read(s,'active').attempt.attemptId,review.attemptId);assert.equal(read(s,'queue')[1].state,'queued');
+});

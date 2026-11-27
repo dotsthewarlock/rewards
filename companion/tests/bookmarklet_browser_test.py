@@ -125,6 +125,16 @@ with sync_playwright() as p:
     expect(host.get_by_role("button",name="Authorize reviewed claim")).to_be_disabled()
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
     host.get_by_label("I confirm the exact claim details and merchant terms").check()
+    # Same-URL replacement with identical form invalidates the old review.
+    page.locator("main.bcr-redemption").evaluate("el=>el.replaceWith(el.cloneNode(true))")
+    host.get_by_role("button",name="Authorize reviewed claim").click()
+    expect(host.locator("#announcement")).to_contain_text("Submission not confirmed")
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+    # Restore the fixture's synthetic native listeners by reloading; no real navigation.
+    page.reload()
+    page.evaluate(script)
+    host.get_by_role("button",name="Review final claim").click()
+    host.get_by_label("I confirm the exact claim details and merchant terms").check()
     host.get_by_role("button",name="Authorize reviewed claim").click()
     expect(host.locator("#announcement")).to_contain_text("Submission attempted")
     assert page.evaluate("window.submits===1&&window.pendingAtClick")

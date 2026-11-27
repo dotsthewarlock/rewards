@@ -294,8 +294,81 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         show_linked_success(page)
         recovered=worker.evaluate("t=>inspectTab(t)",tab)
         assert recovered["recovery"]["attemptId"]==attempt
+        assert recovered["target"]["documentToken"]!=target["documentToken"]
+        assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt])["ok"]
+        target=recovered["target"]
         assert worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt])=={"ok":True,"status":"complete"}
         assert_final_captured(page)
         assert not worker.evaluate("t=>prepareTab(t)",target)["ok"]
         print("MV3 actual shared transport: exact review, explicit authorization, pending intent, linked capture, no replay/advance PASS",flush=True)
+        # Same URL and exact structural report, but a deeply nested wizard is replaced.
+        lifecycle_url="https://getmybonus.ca/CA1126VANW/lifecycle-fixture"
+        lifecycle_html="""<!doctype html><html><body data-slug="CA1126VANW"><div id="outer"><div id="ancestor"><div id="inner">
+        <main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number"><button type="button">Get My Bonus</button></div></form></main>
+        </div></div></div><script>window.clicks=0;document.addEventListener('click',()=>window.clicks++);document.addEventListener('submit',e=>{e.preventDefault();window.clicks++});</script></body></html>"""
+        ctx.route(lifecycle_url,lambda route:route.fulfill(status=200,content_type="text/html",body=lifecycle_html))
+        page.goto(lifecycle_url)
+        page.bring_to_front()
+        first=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target&&r.report?.labels.includes('Get My Bonus'))return r;await new Promise(r=>setTimeout(r,100));}throw Error('no lifecycle target')}""",tab)
+        page.wait_for_timeout(400)
+        old_count=worker.evaluate("async()=> (await diagnostics()).events.length")
+        page.locator("#ancestor").evaluate("el=>el.replaceWith(el.cloneNode(true))")
+        page.wait_for_timeout(600)
+        # Assert actual observer capture before any inspect can rebind it.
+        assert worker.evaluate("async()=> (await diagnostics()).events.length")>old_count
+        changed=worker.evaluate("id=>inspectTab(id)",tab)
+        assert changed["report"]==first["report"]
+        assert changed["target"]["documentToken"]!=first["target"]["documentToken"]
+        assert not worker.evaluate("([t,text])=>previewTab(t,text)",[first["target"],CODE])["ok"]
+        # Pagehide/pageshow invalidates even a same-document restored page.
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}))")
+        assert worker.evaluate("id=>inspectTab(id)",tab).get("target") is None
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))")
+        restored=worker.evaluate("id=>inspectTab(id)",tab)
+        assert restored["target"]["documentToken"]!=changed["target"]["documentToken"]
+        assert not worker.evaluate("([t,text])=>previewTab(t,text)",[changed["target"],CODE])["ok"]
+        # Real independent tabs share the origin's Web Lock; no synthetic merchant action.
+        page.evaluate("""()=>new Promise(resolve=>navigator.locks.request('bs_rewards:companion:data-v1',()=>new Promise(release=>{window.releaseLifecycleLock=release;resolve()})))""")
+        second=ctx.new_page()
+        second.goto(lifecycle_url)
+        second.bring_to_front()
+        other_tab=worker.evaluate("async id=>(await chrome.tabs.query({active:true,currentWindow:true}))[0].id",tab)
+        second_state=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no second target')}""",other_tab)
+        assert worker.evaluate("t=>editTab(t,'saveClipboard',true)",second_state["target"])=={"ok":False,"reason":"edit-busy"}
+        page.evaluate("window.releaseLifecycleLock()")
+        second.wait_for_timeout(100)
+        assert worker.evaluate("t=>editTab(t,'saveClipboard',true)",second_state["target"])=={"ok":True}
+        second.evaluate("""code=>{const p='bs_rewards:CA1126VANW:';localStorage.setItem(p+'queue',JSON.stringify([{id:'fixture-pending',code,state:'pending'}]));localStorage.setItem(p+'active',JSON.stringify({phase:'submitted',fixture:true}));}""",CODE)
+        saved=second.evaluate("JSON.stringify(Object.entries(localStorage).sort())")
+        old_target=second_state["target"]
+        second.reload()
+        second.bring_to_front()
+        reloaded=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no reload target')}""",other_tab)
+        assert reloaded["target"]["documentToken"]!=old_target["documentToken"] and reloaded["summary"]["unresolved"]
+        assert not worker.evaluate("t=>editTab(t,'saveClipboard',false)",reloaded["target"])["ok"]
+        assert second.evaluate("JSON.stringify(Object.entries(localStorage).sort())")==saved
+        assert second.evaluate("window.clicks===0")
+        # Persisted diagnostic timeline and unresolved site data survive actual
+        # Chromium profile close/reopen; recording off means no new events.
+        worker.evaluate("async()=>{await serial(()=>chrome.storage.local.set({diagnosticsEnabled:false}));await recordingTail;}")
+        persisted=worker.evaluate("async()=>await diagnostics()")
+        assert not persisted["enabled"]
+        for p0 in ctx.pages:
+            p0.goto("about:blank")
+            p0.close()
+        ctx.close()
+        ctx=p.chromium.launch_persistent_context(profile,channel="chromium",headless=True,args=[f"--disable-extensions-except={root}",f"--load-extension={root}"])
+        worker=ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker",timeout=15000)
+        ctx.route("https://**/*",lambda route:route.fulfill(status=200,content_type="text/html",body=lifecycle_html) if route.request.url==lifecycle_url else route.abort())
+        assert worker.evaluate("async()=>await diagnostics()")==persisted
+        again=ctx.new_page()
+        again.goto(lifecycle_url)
+        again.bring_to_front()
+        new_tab=worker.evaluate("async()=> (await chrome.tabs.query({active:true,currentWindow:true}))[0].id")
+        after=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no restart target')}""",new_tab)
+        assert after["summary"]["unresolved"]
+        assert again.evaluate("JSON.stringify(Object.entries(localStorage).sort())")==saved
+        assert again.evaluate("window.clicks===0")
+        assert worker.evaluate("async()=>await diagnostics()")==persisted
+        print("Nested root replacement, same-document restoration, two-tab ownership, reload and browser restart persistence PASS",flush=True)
     finally:ctx.close()

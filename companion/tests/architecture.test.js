@@ -68,3 +68,16 @@ test('shared command contract preserves operation names, exact target equality a
  const {tabId,...bookmarklet}=target;assert.ok(W.sameTarget(bookmarklet,{...bookmarklet}));assert.equal(W.sameTarget(target,bookmarklet),false);
  assert.deepEqual(W.extensionOnly,['getCatalog','refreshCatalog','setDiagnostics','captureDiagnostics']);
 });
+
+
+test('target epoch changes on exact root, identity, stage and lifecycle transitions, not equivalent reports',()=>{
+ const W=globalThis.RewardsWorkspaceContract;
+ let n=0;const epoch=W.contextEpoch(()=>String(++n)),root={},id={status:'recognized',root,origin:'https://getmybonus.ca',campaign:'CA1126VANW',stage:'entry'};
+ assert.equal(epoch.sync(id),false);const first=epoch.token;
+ assert.equal(epoch.sync({...id}),false);assert.equal(epoch.token,first);
+ assert.equal(epoch.sync({...id,root:{}}),true);assert.notEqual(epoch.token,first);
+ const next=epoch.token;assert.equal(epoch.sync({...id,status:'conflict'}),true);assert.notEqual(epoch.token,next);
+ assert.equal(epoch.sync(null),false);
+ assert.equal(epoch.sync(id),true);assert.equal(epoch.sync({...id,stage:'success'}),true);
+ const before=epoch.token;epoch.reset();assert.notEqual(epoch.token,before);assert.equal(epoch.sync(id),false);
+});
