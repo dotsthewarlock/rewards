@@ -44,19 +44,24 @@ async function inspectTab(tabId){
     const report=D.validate(result?.report,origin);
     if(!report)return {ok:false,reason:'unverified-report'};
     const target=report.status==='recognized'&&typeof result.documentToken==='string'&&/^[a-f0-9-]{36}$/.test(result.documentToken)?{tabId,origin,campaign:report.campaign,documentToken:result.documentToken}:null;
-    return {ok:true,report,target,summary:report.status==='recognized'?L.validate(result.summary):null};
+    return {ok:true,report,target,summary:report.status==='recognized'?L.validate(result.summary):null,details:report.status==='recognized'?L.validateDetails(result.details):null};
   }catch{return {ok:false,reason:'content-not-ready'};}
 }
 async function activeTab(){return (await chrome.tabs.query({active:true,currentWindow:true}))[0];}
-async function exportTab(target){
+async function scopedRead(target,type,fields,validate){
   if(!target||!Number.isInteger(target.tabId)||!D.allowedOrigin(target.origin)||D.slug(target.campaign)!==target.campaign||typeof target.documentToken!=='string')return {ok:false,reason:'invalid-target'};
   const tab=await activeTab();
   if(tab?.id!==target.tabId||originOf(tab.url)!==target.origin)return {ok:false,reason:'context-changed'};
-  const result=await chrome.tabs.sendMessage(tab.id,{type:'companion.exportRewards',origin:target.origin,campaign:target.campaign,documentToken:target.documentToken},{frameId:0});
+  const result=await chrome.tabs.sendMessage(tab.id,{type,origin:target.origin,campaign:target.campaign,documentToken:target.documentToken,...fields},{frameId:0});
   const current=await activeTab();
   if(current?.id!==tab.id||current.url!==tab.url)return {ok:false,reason:'context-changed'};
-  return L.validateExport(result)||{ok:false,reason:'cache-unavailable'};
+  const check=await inspectTab(tab.id);
+  const finalTab=await activeTab();
+  if(finalTab?.id!==tab.id||finalTab.url!==tab.url||check.target?.documentToken!==target.documentToken||check.target?.campaign!==target.campaign||check.target?.origin!==target.origin)return {ok:false,reason:'context-changed'};
+  return validate(result)||{ok:false,reason:'cache-unavailable'};
 }
+const exportTab=target=>scopedRead(target,'companion.exportRewards',{},L.validateExport);
+const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedRead(target,'companion.previewImport',{text},L.validatePreview):{ok:false,reason:'invalid-input'};
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
@@ -79,6 +84,7 @@ async function handle(m,sender){
     return {ok:true};
   }
   if(m.op==='exportRewards')return exportTab(m.target);
+  if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='exportDiagnostics'){
     const {records}=await diagnostics();
     return {ok:true,export:{schema:'rewards.structural-export/1',records}};

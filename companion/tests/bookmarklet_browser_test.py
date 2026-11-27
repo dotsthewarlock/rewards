@@ -21,6 +21,11 @@ with sync_playwright() as p:
     host=page.locator("#rewards-companion-dev")
     expect(host).to_contain_text("Read-only legacy cache")
     expect(host).to_contain_text("1 pending")
+    expect(host).to_contain_text("•••• 0001")
+    host.get_by_label("Redemption codes").fill("Receipt: 000000000000000000000000000001\n012345678901234567890123456789")
+    host.get_by_role("button",name="Preview import").click()
+    expect(host.locator("#importResult")).to_contain_text("1 ready · 1 duplicates")
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
     assert page.evaluate("typeof globalThis.RewardsDiscovery")== "undefined"
     host.get_by_role("button",name="Rewards",exact=True).click()
     with page.expect_download() as dl:

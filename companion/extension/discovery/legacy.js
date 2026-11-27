@@ -3,19 +3,24 @@
   'use strict';
   const states=Object.freeze(['queued','processing','pending','complete','error','duplicate']);
   const key=(slug,name)=>'bs_rewards:'+slug+':'+name;
+  // Adapted from v15 STORE, QUEUE.addCodes, and HIST.has. Strict reads do
+  // not silently replace malformed data with an empty cache.
+  const validSlug=slug=>typeof slug==='string'&&globalThis.RewardsDiscovery.slug(slug)===slug;
+  const barcode=code=>typeof code==='string'&&/^\d{30}$/.test(code);
+  const last4=code=>barcode(code)?code.slice(-4):null;
+  const count=x=>Number.isInteger(x)&&x>=0&&x<=999;
+  function readRows(storage,slug,name){
+    if(!validSlug(slug))throw Error('invalid-campaign');
+    const raw=storage.getItem(key(slug,name));
+    const rows=raw===null?[]:JSON.parse(raw);
+    if(!Array.isArray(rows)||rows.length>999||rows.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error('invalid-cache');
+    return rows;
+  }
   function summary(storage,slug){
     if(!globalThis.RewardsDiscovery.slug(slug)||globalThis.RewardsDiscovery.slug(slug)!==slug)
       return {ok:false,reason:'invalid-campaign'};
     try{
-      const array=name=>{
-        const raw=storage.getItem(key(slug,name));
-        if(raw===null)return [];
-        const rows=JSON.parse(raw);
-        if(!Array.isArray(rows)||rows.length>999||rows.some(r=>!r||typeof r!=='object'||Array.isArray(r)))
-          throw Error('invalid-cache');
-        return rows;
-      };
-      const queue=array('queue'),history=array('history'),gifts=array('giftcards');
+      const queue=readRows(storage,slug,'queue'),history=readRows(storage,slug,'history'),gifts=readRows(storage,slug,'giftcards');
       const counts=Object.fromEntries([...states,'other'].map(s=>[s,0]));
       for(const row of queue)counts[states.includes(row.state)?row.state:'other']++;
       const bool=name=>['1','true'].includes(storage.getItem(key(slug,name)));
@@ -49,9 +54,8 @@
   function exportRows(storage,slug){
     if(typeof slug!=='string'||globalThis.RewardsDiscovery.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
     try{
-      const raw=storage.getItem(key(slug,'giftcards'));
-      const rows=raw===null?[]:JSON.parse(raw);
-      if(!Array.isArray(rows)||rows.length>999||rows.some(row=>!row||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))throw Error('invalid-cache');
+      const rows=readRows(storage,slug,'giftcards');
+      if(rows.some(row=>fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))throw Error('invalid-cache');
       return {ok:true,rows:rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
     }catch{return {ok:false,reason:'unreadable-cache'};}
   }
@@ -60,5 +64,72 @@
     if(input.rows.some(row=>!row||Object.keys(row).length!==fields.length||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))return null;
     return {ok:true,rows:input.rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport});
+  // Masked view records are for the foreground workspace, never diagnostics.
+  function details(storage,slug){
+    try{
+      const queue=readRows(storage,slug,'queue').map(r=>({last4:last4(r.code),state:states.includes(r.state)?r.state:'other'}));
+      const history=readRows(storage,slug,'history').map(r=>({last4:last4(r.code)||(typeof r.last4==='string'&&/^\d{4}$/.test(r.last4)?r.last4:null)}));
+      return {ok:true,queue,history};
+    }catch{return {ok:false,reason:'unreadable-cache'};}
+  }
+  function validateDetails(input){
+    const suffix=x=>x===null||(typeof x==='string'&&/^\d{4}$/.test(x));
+    const rows=(value,keys)=>Array.isArray(value)&&count(value.length)&&value.every(r=>r&&typeof r==='object'&&Object.keys(r).length===keys.length&&keys.every(k=>Object.hasOwn(r,k))&&suffix(r.last4));
+    if(input?.ok!==true||Object.keys(input).length!==3||!rows(input.queue,['last4','state'])||
+       !rows(input.history,['last4'])||input.queue.some(r=>![...states,'other'].includes(r.state)))return null;
+    return {ok:true,queue:input.queue.map(r=>({last4:r.last4,state:r.state})),history:input.history.map(r=>({last4:r.last4}))};
+  }
+  function parseBarcodes(text){
+    if(typeof text!=='string'||text.length>262144)throw Error('input-too-large');
+    return text.match(/\b\d{30}\b/g)||[];
+  }
+  // Retain v15 hash-only history matching, including its exact fallback format.
+  function legacyFallback(code){
+    let h=2166136261;
+    for(let i=0;i<code.length;i++){h^=code.charCodeAt(i);h=Math.imul(h,16777619);}
+    return 'fallback_'+(h>>>0).toString(16)+'_'+code;
+  }
+  async function historyHash(code){
+    try{
+      if(typeof crypto!=='undefined'&&crypto.subtle){
+        const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(code));
+        return Array.from(new Uint8Array(buf)).map(x=>x.toString(16).padStart(2,'0')).join('');
+      }
+    }catch{}
+    return legacyFallback(code);
+  }
+  // Pure plan: exact strings and v15 duplicate/999 semantics. No IDs, timestamps,
+  // merchant interactions, storage writes, or claim authorization.
+  async function planQueueImport(queue,history,text){
+    const candidates=parseBarcodes(text);
+    const known=new Set(queue.filter(r=>r.state!=='error'&&barcode(r.code)).map(r=>r.code));
+    const historyCodes=new Set(history.filter(r=>barcode(r.code)).map(r=>r.code));
+    const hashes=new Set(history.filter(r=>typeof r.h==='string').map(r=>r.h));
+    const additions=[];
+    let queued=0,duplicates=0;
+    for(const code of candidates.slice(0,Math.max(0,999-queue.length))){
+      const inHistory=historyCodes.has(code)||hashes.has(legacyFallback(code))||(hashes.size>0&&hashes.has(await historyHash(code)));
+      const duplicate=inHistory||known.has(code);
+      additions.push({code,state:duplicate?'duplicate':'queued',note:inHistory?'Already in redemption history':duplicate?'Already in queue':''});
+      known.add(code);
+      if(duplicate)duplicates++;else queued++;
+    }
+    return {additions,queued,duplicates,overflow:candidates.length-additions.length,recognized:candidates.length};
+  }
+  async function previewImport(storage,slug,text){
+    try{
+      const queue=readRows(storage,slug,'queue'),history=readRows(storage,slug,'history');
+      // Draft previews are non-mutating; do not authorize a subsequent write.
+      const {queued,duplicates,overflow,recognized}=await planQueueImport(queue,history,text);
+      return {ok:true,queued,duplicates,overflow,recognized};
+    }catch{return {ok:false,reason:'import-unavailable'};}
+  }
+  function validatePreview(input){
+    if(input?.ok!==true||Object.keys(input).length!==5||
+       !['queued','duplicates','overflow','recognized'].every(k=>Number.isInteger(input[k])&&input[k]>=0&&input[k]<=9000)||
+       input.queued+input.duplicates>999||input.queued+input.duplicates+input.overflow!==input.recognized)return null;
+    const {queued,duplicates,overflow,recognized}=input;
+    return {ok:true,queued,duplicates,overflow,recognized};
+  }
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview});
 })();

@@ -43,13 +43,19 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport'].includes(m?.type))return;
     const report=D.report(document);
-    if(m.type==='companion.exportRewards'){
-      if(stopped||m.documentToken!==documentToken||report?.status!=='recognized'||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
-      return reply(L.exportRows(localStorage,report.campaign));
+    const recognized=!stopped&&report?.status==='recognized';
+    if(m.type!=='companion.inspect'){
+      if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
+      if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
+      L.previewImport(localStorage,report.campaign,m.text).then(result=>{
+        const now=D.report(document);
+        reply(!stopped&&now?.status==='recognized'&&now.origin===m.origin&&now.campaign===m.campaign?result:{ok:false,reason:'context-changed'});
+      },()=>reply({ok:false,reason:'import-unavailable'}));
+      return true;
     }
-    reply({report,documentToken,summary:report?.status==='recognized'?L.summary(localStorage,report.campaign):null});
+    reply({report,documentToken,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null});
   });
   window.addEventListener('pagehide',()=>{stopped=true;disconnect();last='';generation++;});
   window.addEventListener('pageshow',()=>{if(stopped){stopped=false;capture();}});

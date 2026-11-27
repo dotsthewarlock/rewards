@@ -18,16 +18,19 @@ function launchBookmarklet(markup,css){
  const inspect=()=>{
    const report=D.report(document),recognized=report?.status==='recognized';
    const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken}:null;
-   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
+   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
  };
  const request=async(op,fields={})=>{
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
    const current=inspect();
    if(op==='inspect')return current;
-   if(op==='exportRewards'){
+   if(op==='exportRewards'||op==='previewImport'){
      const t=fields.target,c=current.target;
      if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
-     return L.exportRows(localStorage,c.campaign);
+     if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
+     const result=await L.previewImport(localStorage,c.campaign,fields.text);
+     const now=inspect().target;
+     return host.isConnected&&now?.origin===c.origin&&now?.campaign===c.campaign&&now?.documentToken===c.documentToken?result:{ok:false,reason:'context-changed'};
    }
    if(op==='exportDiagnostics'&&current.target)return {ok:true,export:{schema:'rewards.structural-export/1',records:[{at:new Date().toISOString(),report:current.report}]}};
    return {ok:false,reason:'unsupported-command'};

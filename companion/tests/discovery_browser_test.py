@@ -51,7 +51,13 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         stale=dict(report["target"],documentToken="00000000-0000-0000-0000-000000000000")
         assert not worker.evaluate("(target)=>exportTab(target)",stale)["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
-        print("explicit reward export, stale context rejected, original cache unchanged PASS",flush=True)
+        assert report["details"]["queue"]==[{"last4":"0001","state":"pending"}]
+        draft="Receipt: 000000000000000000000000000001\n012345678901234567890123456789"
+        preview=worker.evaluate("([target,text])=>previewTab(target,text)",[report["target"],draft])
+        assert preview=={"ok":True,"queued":1,"duplicates":1,"overflow":0,"recognized":2}
+        assert not worker.evaluate("([target,text])=>previewTab(target,text)",[stale,draft])["ok"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+        print("explicit reward export, masked queue, import preview, stale context rejected, original cache unchanged PASS",flush=True)
         before=len(records)
         page.evaluate("document.body.dataset.slug='CA1126PZFT'")
         page.wait_for_timeout(600)
