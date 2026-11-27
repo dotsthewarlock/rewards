@@ -53,3 +53,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.3 timeline correction](2026-11-27_V0.3_timeline-correction.md): confirmed Chrome readback root cause and scoped manual-capture candidate.
 
 - [V0.6 development candidate handoff](2026-11-27_V0.6_development-candidate.md): verified V0.3/A1/V0.4/A2/A3 and versioned candidate; native/live/release gates.
+
+- [V0.6 candidate architect review](2026-11-27_V0.6_candidate-review.md): automated convergence accepted, native/live gates, later approved launcher-only publication reconciled.
