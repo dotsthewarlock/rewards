@@ -33,6 +33,10 @@ async function record(report){
     return {ok:true};
   });
 }
+const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
+function recoverySelection(value){
+  return value&&Object.keys(value).length===2&&uuid(value.attemptId)&&typeof value.last4==='string'&&/^\d{4}$/.test(value.last4)?{attemptId:value.attemptId,last4:value.last4}:null;
+}
 async function inspectTab(tabId){
   const tab=await chrome.tabs.get(tabId);
   const origin=originOf(tab.url);
@@ -43,8 +47,8 @@ async function inspectTab(tabId){
     if(current.url!==tab.url)return {ok:false,reason:'navigation-changed'};
     const report=D.validate(result?.report,origin);
     if(!report)return {ok:false,reason:'unverified-report'};
-    const target=report.status==='recognized'&&typeof result.documentToken==='string'&&/^[a-f0-9-]{36}$/.test(result.documentToken)?{tabId,origin,campaign:report.campaign,documentToken:result.documentToken}:null;
-    return {ok:true,report,target,summary:report.status==='recognized'?L.validate(result.summary):null,details:report.status==='recognized'?L.validateDetails(result.details):null};
+    const target=report.status==='recognized'&&uuid(result.documentToken)?{tabId,origin,campaign:report.campaign,documentToken:result.documentToken}:null;
+    return {ok:true,report,target,summary:report.status==='recognized'?L.validate(result.summary):null,details:report.status==='recognized'?L.validateDetails(result.details):null,recovery:target&&report.stage==='success'?recoverySelection(result.recovery):null};
   }catch{return {ok:false,reason:'content-not-ready'};}
 }
 async function activeTab(){return (await chrome.tabs.query({active:true,currentWindow:true}))[0];}
@@ -66,9 +70,9 @@ async function scopedOperation(target,type,fields,validate,write=false){
 const exportTab=target=>scopedOperation(target,'companion.exportRewards',{},L.validateExport);
 const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedOperation(target,'companion.previewImport',{text},L.validatePreview):{ok:false,reason:'invalid-input'};
 const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,'companion.editCache',{op,value},result=>L.validateEdit(result,op),true):{ok:false,reason:'invalid-input'};
-const reconcileTab=target=>scopedOperation(target,'companion.reconcileSuccess',{},result=>
+const reconcileTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'companion.reconcileSuccess',{attemptId},result=>
   result?.ok===true&&result.status==='complete'?{ok:true,status:'complete'}:
-  result?.ok===false?{ok:false,reason:'reconciliation-blocked'}:null,true);
+  result?.ok===false?{ok:false,reason:'reconciliation-blocked'}:null,true):{ok:false,reason:'invalid-target'};
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
@@ -93,7 +97,7 @@ async function handle(m,sender){
   if(m.op==='exportRewards')return exportTab(m.target);
   if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='editCache')return editTab(m.target,m.edit,m.value);
-  if(m.op==='reconcileSuccess')return reconcileTab(m.target);
+  if(m.op==='reconcileSuccess')return reconcileTab(m.target,m.attemptId);
   if(m.op==='exportDiagnostics'){
     const {records}=await diagnostics();
     return {ok:true,export:{schema:'rewards.structural-export/1',records}};

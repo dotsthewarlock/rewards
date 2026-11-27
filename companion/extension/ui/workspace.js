@@ -36,7 +36,7 @@ function render(){
    if(summary?.ok)body+='<section class="surface"><p>'+summary.queue.queued+' ready · '+summary.queue.complete+' complete · '+summary.queue.pending+' pending</p><p>'+summary.queue.duplicate+' duplicates · '+summary.queue.error+' errors</p><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p>'+(summary.unresolved?'<p class="warning">Existing unresolved or active state. No replay or advancement.</p>':'')+'</section>';
    else if(summary?.ok===false)body+='<p class="warning">Legacy cache could not be safely read. No data changed.</p>';
    if(summary?.ok&&state?.target){
-     if(r?.stage==='success'&&summary.unresolved)body+='<section class="surface stack"><h3>Unresolved reward</h3><p>Inspect the merchant confirmation, then capture its matching reward. No claim will be submitted or advanced.</p>'+button('Capture matching reward','reconcileSuccess',{primary:true,disabled:editing})+'</section>';
+     if(r?.stage==='success'&&summary.unresolved&&state.recovery)body+='<section class="surface stack"><h3>Unresolved reward</h3><p>Reviewed attempt ending '+esc(state.recovery.last4)+'. Inspect the matching merchant confirmation before capture. No claim will be submitted or advanced.</p>'+button('Capture matching reward','reconcileSuccess',{primary:true,disabled:editing,extra:'data-value="'+esc(state.recovery.attemptId)+'"'})+'</section>';
      body+='<section class="surface stack"><label for="importDraft">Redemption codes</label><textarea id="importDraft" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="Paste 30-digit codes or receipt text">'+esc(draft)+'</textarea>'+'<div class="row">'+button('Add to queue','addQueue',{primary:true,disabled:editing||summary.unresolved||!draft.trim()})+button('Preview','previewImport',{disabled:editing||!draft.trim()})+'</div><p class="muted">Close other v15 workspaces before editing. Adding codes never submits a claim.</p><p id="importResult" role="status">'+(preview?esc(preview):'')+'</p></section>';
      if(details?.ok)body+='<section class="surface"><h3>Existing queue</h3>'+(details.queue.length?maskedList(details.queue,page,'queuePage'):'<p>No queued records.</p>')+'</section>';
    }
@@ -82,10 +82,11 @@ root.addEventListener('click',async e=>{
  if(target.dataset.action==='queuePage'){page=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='reconcileSuccess'){
-   if(editing||!state?.target||state.report?.stage!=='success'||!state.summary?.unresolved)return;
-   const selected=state.target;editing=true;render();
+   if(editing||!state?.target||state.report?.stage!=='success'||!state.summary?.unresolved||
+      !state.recovery||target.dataset.value!==state.recovery.attemptId)return;
+   const selected=state.target,attemptId=state.recovery.attemptId;editing=true;render();
    let result;
-   try{result=await request('reconcileSuccess',{target:selected});}catch{}
+   try{result=await request('reconcileSuccess',{target:selected,attemptId});}catch{}
    editing=false;
    if(!alive())return;
    await refresh();

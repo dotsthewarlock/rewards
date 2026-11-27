@@ -15,10 +15,11 @@ function launchBookmarklet(markup,css){
  close.addEventListener('click',()=>host.remove());shell.prepend(close);
  root.append(style,shell);document.body.append(host);
  const documentToken=crypto.randomUUID();
+ window.addEventListener('pagehide',()=>host.remove(),{once:true});
  const inspect=()=>{
    const report=D.report(document),recognized=report?.status==='recognized';
    const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken}:null;
-   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
+   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
  };
  const request=async(op,fields={})=>{
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
@@ -30,7 +31,7 @@ function launchBookmarklet(markup,css){
      if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
      if(op==='reconcileSuccess'){
        const current=()=>host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp');
-       return globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,c,current);
+       return globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,c,fields.attemptId,current);
      }
      if(op==='editCache'){
        const current=()=>{

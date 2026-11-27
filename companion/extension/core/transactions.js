@@ -85,6 +85,13 @@
     if(!a||a.schema!==schema||a.phase!=='submitted'||!validReview(a.attempt)||a.id!==a.attempt.queueId||a.code!==a.attempt.code)return null;
     return a.attempt;
   }
+  // A masked selection for the foreground workspace only, not diagnostics.
+  function pendingSelection(storage,slug){
+    try{
+      const r=activeAttempt({active:storage.getItem(L.key(slug,'active'))});
+      return r?.campaign===slug?{attemptId:r.attemptId,last4:r.code.slice(-4)}:null;
+    }catch{return null;}
+  }
   // Explicit reconciliation of a visible, exact linked success. Recovery is
   // idempotent: gift -> history -> queue -> clear intent; never navigate.
   async function reconcileSuccess(storage,locks,target,attemptId,card,contextValid){
@@ -123,5 +130,5 @@
       }catch{return fail(attempted?'capture-unknown':'unreadable-cache');}
     });
   }
-  globalThis.RewardsTransactions=Object.freeze({validReview,startAttempt,reconcileSuccess});
+  globalThis.RewardsTransactions=Object.freeze({validReview,startAttempt,reconcileSuccess,pendingSelection});
 })();

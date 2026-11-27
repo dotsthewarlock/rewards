@@ -66,6 +66,12 @@ with sync_playwright() as p:
     expect(host.locator("#announcement")).to_contain_text("Capture not confirmed")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
     page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
+    # Same document and barcode, changed durable attempt. Stale reviewed action must not capture.
+    page.evaluate("""()=>{const k='bs_rewards:CA1126VANW:active',r=JSON.parse(localStorage.getItem(k));r.attempt.attemptId='00000000-0000-0000-0000-000000000099';localStorage.setItem(k,JSON.stringify(r));window.before=JSON.stringify(Object.entries(localStorage).sort());}""")
+    host.get_by_role("button",name="Capture matching reward").click()
+    expect(host.locator("#announcement")).to_contain_text("Capture not confirmed")
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+    host.get_by_role("button",name="Refresh connection").click()
     host.get_by_role("button",name="Capture matching reward").click()
     expect(host.locator("#announcement")).to_contain_text("Matching reward captured")
     assert_captured(page)

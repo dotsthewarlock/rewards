@@ -100,3 +100,12 @@ test('capture snapshots observed credentials before async ownership and rejects 
  conflict.map.set(key('giftcards'),JSON.stringify([{...card,gcPin:'9999',key:'000012345678|0000',sourceRedemptionCode:other,slug}]));
  assert.equal((await reconcile(conflict)).reason,'reward-conflict');
 });
+
+test('pending selection is masked, attempt-specific and absent without durable intent',async()=>{
+ const s=store();assert.equal(T.pendingSelection(s,slug),null);
+ await start(s);
+ assert.deepEqual(T.pendingSelection(s,slug),{attemptId:review.attemptId,last4:code.slice(-4)});
+ assert.equal(T.pendingSelection(s,'CA1126PKIZ'),null);
+ await reconcile(s);
+ assert.equal(T.pendingSelection(s,slug),null);
+});

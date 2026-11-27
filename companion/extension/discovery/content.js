@@ -4,7 +4,7 @@
   const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
   if(window.top!==window||!D.allowedOrigin(location.origin)||globalThis.__rewardsDiscoveryLoaded)return;
   globalThis.__rewardsDiscoveryLoaded=true;
-  const documentToken=crypto.randomUUID();
+  let documentToken=crypto.randomUUID();
   let observer=null,timer=null,expiry=null,last='',generation=0,root=null,stopped=false;
   function disconnect(){observer?.disconnect();observer=null;clearTimeout(timer);timer=null;clearTimeout(expiry);expiry=null;root=null;}
   function schedule(){
@@ -50,9 +50,9 @@
       if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
       if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
       if(m.type==='companion.reconcileSuccess'){
-        const current=()=>!stopped&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+        const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
         globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,
-          {origin:m.origin,campaign:m.campaign,documentToken},current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
+          {origin:m.origin,campaign:m.campaign,documentToken},m.attemptId,current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
         return true;
       }
       if(m.type==='companion.editCache'){
@@ -70,9 +70,9 @@
       },()=>reply({ok:false,reason:'import-unavailable'}));
       return true;
     }
-    reply({report,documentToken,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null});
+    reply({report,documentToken,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null});
   });
   window.addEventListener('pagehide',()=>{stopped=true;disconnect();last='';generation++;});
-  window.addEventListener('pageshow',()=>{if(stopped){stopped=false;capture();}});
+  window.addEventListener('pageshow',()=>{if(stopped){documentToken=crypto.randomUUID();stopped=false;capture();}});
   capture();
 })();

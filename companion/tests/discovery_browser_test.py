@@ -111,16 +111,20 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         page.bring_to_front()
         recovered=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.report?.stage==='success'&&r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no success target')}""",tab)
         target=recovered["target"]
+        attempt_id=recovered["recovery"]["attemptId"]
+        assert recovered["recovery"]["last4"]==CODE[-4:]
         assert recovered["summary"]["unresolved"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
-        assert not worker.evaluate("t=>reconcileTab(t)",target)["ok"]
+        assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
         page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
         stale=dict(target,documentToken="00000000-0000-0000-0000-000000000000")
-        assert not worker.evaluate("t=>reconcileTab(t)",stale)["ok"]
-        assert worker.evaluate("t=>reconcileTab(t)",target)=={"ok":True,"status":"complete"}
+        assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[stale,attempt_id])["ok"]
+        assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,"00000000-0000-0000-0000-000000000099"])["ok"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
+        assert worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])=={"ok":True,"status":"complete"}
         assert_captured(page)
-        assert not worker.evaluate("t=>reconcileTab(t)",target)["ok"]
+        assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])["ok"]
         assert_captured(page)
         print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
     finally:ctx.close()

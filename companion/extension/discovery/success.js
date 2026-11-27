@@ -56,22 +56,23 @@
   }
   // Both distributions use this explicit action. Never auto-capture on mount,
   // infer an attempt from a visible card, or advance the merchant wizard.
-  async function reconcileVisible(doc,storage,locks,target,contextValid){
+  async function reconcileVisible(doc,storage,locks,target,attemptId,contextValid){
     const T=globalThis.RewardsTransactions;
     if(!T||typeof contextValid!=='function'||!target)return fail('reconciliation-blocked');
     try{
       const id=D.identity(doc),url=doc.location.href;
       if(id?.status!=='recognized'||id.stage!=='success'||id.origin!==target.origin||
         id.campaign!==target.campaign||!contextValid())return fail('context-changed');
-      const active=JSON.parse(storage.getItem(L.key(target.campaign,'active'))||'null');
+      const activeKey=L.key(target.campaign,'active'),activeRaw=storage.getItem(activeKey);
+      const active=JSON.parse(activeRaw||'null');
       const attempt=active?.attempt;
-      if(!T.validReview(attempt)||active.schema!=='rewards.pending/1'||attempt.origin!==target.origin||
+      if(!T.validReview(attempt)||attempt.attemptId!==attemptId||active.schema!=='rewards.pending/1'||attempt.origin!==target.origin||
         attempt.campaign!==target.campaign)return fail('reconciliation-blocked');
       const observed=readSuccess(doc,attempt.code);
       if(!observed.ok)return fail('reconciliation-blocked');
       const fingerprint=JSON.stringify(observed.card);
       const current=()=>{
-        if(!contextValid()||doc.location.href!==url)return false;
+        if(!contextValid()||doc.location.href!==url||storage.getItem(activeKey)!==activeRaw)return false;
         const now=D.identity(doc);
         if(now?.status!=='recognized'||now.stage!=='success'||now.root!==id.root||
           now.origin!==target.origin||now.campaign!==target.campaign)return false;
@@ -80,7 +81,7 @@
       };
       // Core verifies ownership, exact durable intent and source linkage again,
       // and checks this live fingerprint before each critical cache write.
-      return await T.reconcileSuccess(storage,locks,target,attempt.attemptId,observed.card,current);
+      return await T.reconcileSuccess(storage,locks,target,attemptId,observed.card,current);
     }catch{return fail('reconciliation-blocked');}
   }
   globalThis.RewardsSuccess=Object.freeze({readSuccess,reconcileVisible});
