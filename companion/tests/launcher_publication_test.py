@@ -25,7 +25,8 @@ def archive(files):
     return buf.getvalue()
 def fixture():
     build={"schema":"rewards.development-package/2","channel":"development","status":"development-only; not live accepted","commit":COMMIT,"version":"0.6.1","rollbackBaseline":m.BASELINE,"assets":ASSETS}
-    source=b"window.fixture=true;"
+    marker=f'<header data-build-version="0.6.1" data-build-commit="{COMMIT}"><h1>Rewards Companion</h1></header>'
+    source=("(()=>{\nwindow.fixture=true;\nlaunchBookmarklet("+json.dumps(marker,separators=(",",":"))+","+json.dumps("")+");\n})();").encode()
     manifest={"manifest_version":3,"version":"0.6.1","version_name":"0.6.1 development candidate",
               "background":{"service_worker":"background.js"},"side_panel":{"default_path":"index.html"},
               "icons":{"16":"icons/icon16.png"},"action":{"default_icon":{"16":"icons/icon16.png"}},
@@ -34,7 +35,7 @@ def fixture():
              "core/campaigns.js","core/codec.js","core/public-catalog.js","ui/components.js","ui/workspace.js",
              "ui/views/workspace-queue.js","ui/views/workspace-rewards.js","ui/views/workspace-campaigns.js",
              "ui/views/workspace-settings.js","ui/live.js","ui/tokens.css","ui/components.css"}
-    ext={n:b"fixture" for n in runtime};ext["manifest.json"]=m.json_bytes(manifest)
+    ext={n:b"fixture" for n in runtime};ext["manifest.json"]=m.json_bytes(manifest);ext["index.html"]=marker.encode()
     files={"build.json":m.json_bytes(build),"install.html":b"fixture","native-acceptance.md":b"fixture",
            ASSETS["bookmarklet"]:("javascript:"+quote(source.decode(),safe="")+"\n").encode(),ASSETS["source"]:source,
            ASSETS["extension"]:archive(ext)}
@@ -68,6 +69,46 @@ class PublicationTests(unittest.TestCase):
             changed["SHA256SUMS.txt"]="".join(m.digest(v)+"  "+k+"\n" for k,v in changed.items() if k!="SHA256SUMS.txt").encode()
             blob=archive(changed)
             with self.assertRaises(ValueError):m.unpack(blob,COMMIT,m.digest(blob))
+    def test_embedded_identity(self):
+        data,run,art,files=fixture()
+        def repackage(changed, *, historical=False):
+            changed={**changed}
+            changed["SHA256SUMS.txt"]="".join(m.digest(v)+"  "+k+"\n" for k,v in changed.items() if k!="SHA256SUMS.txt").encode()
+            blob=archive(changed)
+            return m.unpack(blob,COMMIT,m.digest(blob),verify_historical=historical)
+        with zipfile.ZipFile(io.BytesIO(files[ASSETS["extension"]])) as z:
+            ext={n:z.read(n) for n in z.namelist()}
+        panel=ext["index.html"]
+        for bad in (b"<header></header>",panel.replace(COMMIT.encode(),b"b"*40),
+                    panel.replace(b'0.6.1',b'0.6.2'),panel+panel,
+                    panel.replace(b'data-build-version=',b'data-build-version="0.6.1" data-build-version=')):
+            with self.subTest(panel=bad):
+                with self.assertRaises(ValueError):repackage({**files,ASSETS["extension"]:archive({**ext,"index.html":bad})})
+        source=files[ASSETS["source"]]
+        for bad in (b"window.fixture=true;",source.replace(COMMIT.encode(),b"b"*40),
+                    source.replace(b'0.6.1',b'0.6.2'),
+                    source.replace(b"launchBookmarklet(",b"otherFunction("),
+                    source.replace(b"launchBookmarklet(",b"// launchBookmarklet("),
+                    source.replace(b"<header ",b"<div ").replace(b"</header>",b"</div>")):
+            # A missing/wrong marker must fail even with internally consistent hashes/URL.
+            with self.subTest(source=bad):
+                with self.assertRaises(ValueError):
+                    repackage({**files,ASSETS["source"]:bad,ASSETS["bookmarklet"]:("javascript:"+quote(bad.decode(),safe="")+"\n").encode()},historical=True)
+        print("D3 embedded identity rejection cases PASS",flush=True)
+    def test_historical_exact_only(self):
+        repo=Path(__file__).resolve().parents[2]
+        record=repo/"companion/launcher/releases/0.6.0-dev-de3cb5d39410/publication.json"
+        evidence=m.read_evidence(record)
+        candidate=evidence["candidate"]
+        data=(repo/candidate["package"]).read_bytes()
+        self.assertEqual((evidence["commit"],m.digest(data)),m.HISTORICAL)
+        self.assertEqual(m.unpack(data,evidence["commit"],candidate["packageSha256"],verify_historical=True)[0],candidate)
+        with self.assertRaises(ValueError):m.unpack(data,evidence["commit"],candidate["packageSha256"])
+        with zipfile.ZipFile(io.BytesIO(data)) as z:files={n:z.read(n) for n in z.namelist()}
+        altered=archive(files)
+        self.assertNotEqual(m.digest(altered),candidate["packageSha256"])
+        with self.assertRaises(ValueError):m.unpack(altered,evidence["commit"],m.digest(altered),verify_historical=True)
+        print("Historical exact archive compatibility PASS; no prepare/activate exemption",flush=True)
     def test_two_phase(self):
         data,run,art,_=fixture()
         old={"version":"0.6.0-dev-"+"b"*12,"path":"companion/launcher/releases/0.6.0-dev-"+"b"*12+".js","sha256":"0"*64}
