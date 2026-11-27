@@ -1,0 +1,22 @@
+# Shared workspace request contract (A1)
+Both production surfaces use `mountWorkspace(root, request, options)` and the shared `core/workspace-contract.js` vocabulary. The synthetic sandbox must use this same injected request interface, not a second production engine. Validated domain responses remain owned by existing identity, legacy cache, transaction and catalog modules; this contract does not confer authority or relax sender/target checks.
+
+| Operation | Request fields (in addition to operation) | Success response |
+|---|---|---|
+| inspect | none | ok, report, target, summary, details, recovery, diagnostics |
+| revealReward | target, snapshot, index | ok, snapshot, index, row (one explicit record) |
+| exportRewards | target | ok, rows (four exact fields) |
+| previewImport | target, text | ok, queued, duplicates, overflow, recognized |
+| editCache | target, edit, value | ok; queue counts for import |
+| prepareFinal | target | ok, review (exact current binding) |
+| authorizeFinal | target, attemptId, confirmed | ok, status pending (attempted, not verified) |
+| cancelFinal | target, attemptId | ok |
+| reconcileSuccess | target, attemptId | ok, status complete (verified persistence only) |
+| exportDiagnostics | none | ok, export (sanitized structural packet) |
+| getCatalog / refreshCatalog | none | ok, catalog |
+| setDiagnostics | enabled | ok |
+| captureDiagnostics | target | ok (manual capture persisted/read back) |
+
+Failure is `{ok:false,reason:fixed-code}` where available. Transport exceptions remain uncertain outcomes as presently handled; do not blindly retry writes or submissions. MV3 workspace message envelope is `{type:'companion.workspace',op,...fields}`, from the exact trusted workspace URL. The worker binds tab, frame, document and origin before forwarding the corresponding fixed content message. Bookmarklet has no tabId, uses the page-world target and supports no catalog transport or retained background diagnostics; its export is current document only. Catalog operations and recording controls are extension-only. All target comparisons in the UI include origin, campaign, documentToken and optional tabId; these are not a substitute for platform authorization.
+
+Pure core identity, legacy-cache, registry, transaction and public catalog code cannot depend on DOM adapters or UI. DOM adapters own recognition/actionability and native page interaction; platform adapters own lifecycle/sender validation; shared presentation never reads storage or page controls directly. Explicit classic-script order (manifest, worker, bookmarklet bundle) is tested alongside ESM imports. Existing exact validation, non-replay, durable persistence and privacy boundaries remain.

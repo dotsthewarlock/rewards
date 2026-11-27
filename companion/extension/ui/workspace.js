@@ -1,6 +1,7 @@
 import {csv,tsv} from '../core/codec.js';
 import {campaignById} from '../core/campaigns.js';
 import {esc,button,check} from './components.js';
+import '../core/workspace-contract.js';
 // Platform-neutral workspace. The transport owns identity, persistence and authorization.
 export function mountWorkspace(root,request,{recording=true}={}){
 const $=id=>root.getElementById(id);
@@ -18,7 +19,7 @@ const editMessage={
  'cache-changed':'Cache changed during review. Refresh before editing.',
  'edit-outcome-unknown':'Save outcome uncertain. Refresh and inspect the cache before retrying.'
 };
-const sameTarget=(a,b)=>!!a&&!!b&&a.origin===b.origin&&a.campaign===b.campaign&&a.documentToken===b.documentToken&&a.tabId===b.tabId;
+const {sameTarget}=globalThis.RewardsWorkspaceContract;
 const stateLabel={queued:'Ready',processing:'Processing',pending:'Pending',complete:'Complete',error:'Error',duplicate:'Duplicate',other:'Unknown'};
 function maskedList(rows,index,action,history=false,rewards=false){
  const total=Math.max(1,Math.ceil(rows.length/25)),current=Math.min(index,total-1);

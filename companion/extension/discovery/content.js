@@ -1,7 +1,7 @@
 /* Passive top-frame listener. Adapted from InComm listener lifecycle; no merchant mutations or credential reads. */
 (() => {
   'use strict';
-  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
+  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,W=globalThis.RewardsWorkspaceContract;
   if(window.top!==window||!D.allowedOrigin(location.origin)||globalThis.__rewardsDiscoveryLoaded)return;
   globalThis.__rewardsDiscoveryLoaded=true;
   let documentToken=crypto.randomUUID(),prepared=null;
@@ -39,17 +39,17 @@
     last=sig;
     const seq=++generation;
     try{
-      const response=await chrome.runtime.sendMessage({type:'companion.observation',report,reason});
+      const response=await chrome.runtime.sendMessage({type:W.observationType,report,reason});
       if(!response?.ok&&seq===generation)last='';
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.revealReward','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess','companion.prepareFinal','companion.authorizeFinal','companion.cancelFinal'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!W.isContentType(m?.type))return;
     const report=D.report(document);
     const recognized=!stopped&&report?.status==='recognized';
-    if(m.type!=='companion.inspect'){
+    if(m.type!==W.contentType('inspect')){
       if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
-      if(m.type==='companion.prepareFinal'){
+      if(m.type===W.contentType('prepareFinal')){
         clearPrepared();
         const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
         const binding=globalThis.RewardsForeground.prepareFinal(document,localStorage,navigator.locks,
@@ -58,25 +58,25 @@
         prepared=binding;
         return reply({ok:true,review:binding.review});
       }
-      if(m.type==='companion.cancelFinal'){
+      if(m.type===W.contentType('cancelFinal')){
         if(prepared?.review.attemptId===m.attemptId)clearPrepared();
         return reply({ok:true});
       }
-      if(m.type==='companion.authorizeFinal'){
+      if(m.type===W.contentType('authorizeFinal')){
         if(m.confirmed!==true||!prepared||prepared.review.attemptId!==m.attemptId)return reply({ok:false,reason:'review-expired'});
         const binding=prepared;prepared=null;
         binding.authorize().then(reply,()=>reply({ok:false,reason:'pending-unknown'}));
         return true;
       }
-      if(m.type==='companion.revealReward')return reply(L.revealReward(localStorage,report.campaign,m.snapshot,m.index));
-      if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
-      if(m.type==='companion.reconcileSuccess'){
+      if(m.type===W.contentType('revealReward'))return reply(L.revealReward(localStorage,report.campaign,m.snapshot,m.index));
+      if(m.type===W.contentType('exportRewards'))return reply(L.exportRows(localStorage,report.campaign));
+      if(m.type===W.contentType('reconcileSuccess')){
         const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
         globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,
           {origin:m.origin,campaign:m.campaign,documentToken},m.attemptId,current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
         return true;
       }
-      if(m.type==='companion.editCache'){
+      if(m.type===W.contentType('editCache')){
         clearPrepared();
         // The original v15 overlay is a compatibility warning, not a cooperative lock.
         const current=()=>{

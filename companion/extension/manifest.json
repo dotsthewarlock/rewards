@@ -48,6 +48,7 @@
         "core/identity.js",
         "discovery/core.js",
         "core/legacy.js",
+        "core/workspace-contract.js",
         "core/registry.js",
         "core/transactions.js",
         "discovery/success.js",

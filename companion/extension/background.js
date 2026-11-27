@@ -1,6 +1,6 @@
 'use strict';
-importScripts('core/identity.js','discovery/core.js','core/legacy.js','core/registry.js','core/transactions.js','core/public-catalog.js');
-const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns;
+importScripts('core/identity.js','discovery/core.js','core/legacy.js','core/workspace-contract.js','core/registry.js','core/transactions.js','core/public-catalog.js');
+const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns,W=globalThis.RewardsWorkspaceContract;
 const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(configure);
 chrome.runtime.onStartup.addListener(configure);
@@ -75,7 +75,7 @@ async function inspectTab(tabId){
   const origin=originOf(tab.url);
   if(!D.allowedOrigin(origin))return {ok:true,report:null,summary:null};
   try{
-    const result=await chrome.tabs.sendMessage(tabId,{type:'companion.inspect'},{frameId:0});
+    const result=await chrome.tabs.sendMessage(tabId,{type:W.contentType('inspect')},{frameId:0});
     const current=await chrome.tabs.get(tabId);
     if(current.url!==tab.url)return {ok:false,reason:'navigation-changed'};
     const report=D.validate(result?.report,origin);
@@ -90,8 +90,7 @@ async function captureDiagnostics(target){
   const tab=await activeTab();
   if(!target||tab?.id!==target.tabId||originOf(tab?.url)!==target.origin)return {ok:false,reason:'context-changed'};
   const inspection=await inspectTab(tab.id),current=await activeTab(),t=inspection.target;
-  if(!t||current?.id!==tab.id||current.url!==tab.url||t.documentToken!==target.documentToken||
-     t.origin!==target.origin||t.campaign!==target.campaign)return {ok:false,reason:'context-changed'};
+  if(current?.id!==tab.id||current.url!==tab.url||!W.sameTarget(t,target))return {ok:false,reason:'context-changed'};
   return record(inspection.report,'manual-capture');
 }
 async function scopedOperation(target,type,fields,validate,write=false){
@@ -106,15 +105,15 @@ async function scopedOperation(target,type,fields,validate,write=false){
     const check=await inspectTab(tab.id);
     const finalTab=await activeTab();
     if(finalTab?.id!==tab.id||finalTab.url!==tab.url||check.target?.documentToken!==target.documentToken||check.target?.campaign!==target.campaign||check.target?.origin!==target.origin)return unavailable();
-    if(type==='companion.revealReward'&&check.details?.rewardSnapshot!==fields.snapshot)return unavailable();
+    if(type===W.contentType('revealReward')&&check.details?.rewardSnapshot!==fields.snapshot)return unavailable();
     return validate(result)||unavailable();
   }catch{return unavailable();}
 }
-const revealTab=(target,snapshot,index)=>L.validSelection(snapshot,index)?scopedOperation(target,'companion.revealReward',{snapshot,index},r=>L.validateReveal(r,snapshot,index)):{ok:false,reason:'invalid-selection'};
-const exportTab=target=>scopedOperation(target,'companion.exportRewards',{},L.validateExport);
-const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedOperation(target,'companion.previewImport',{text},L.validatePreview):{ok:false,reason:'invalid-input'};
-const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,'companion.editCache',{op,value},result=>L.validateEdit(result,op),true):{ok:false,reason:'invalid-input'};
-const reconcileTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'companion.reconcileSuccess',{attemptId},result=>
+const revealTab=(target,snapshot,index)=>L.validSelection(snapshot,index)?scopedOperation(target,W.contentType('revealReward'),{snapshot,index},r=>L.validateReveal(r,snapshot,index)):{ok:false,reason:'invalid-selection'};
+const exportTab=target=>scopedOperation(target,W.contentType('exportRewards'),{},L.validateExport);
+const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedOperation(target,W.contentType('previewImport'),{text},L.validatePreview):{ok:false,reason:'invalid-input'};
+const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,W.contentType('editCache'),{op,value},result=>L.validateEdit(result,op),true):{ok:false,reason:'invalid-input'};
+const reconcileTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,W.contentType('reconcileSuccess'),{attemptId},result=>
   result?.ok===true&&result.status==='complete'?{ok:true,status:'complete'}:
   result?.ok===false?{ok:false,reason:'reconciliation-blocked'}:null,true):{ok:false,reason:'invalid-target'};
 function validatePrepared(result,target){
@@ -124,10 +123,10 @@ function validatePrepared(result,target){
     r.documentToken!==target.documentToken||Object.keys(choice).some(k=>r[k]!==choice[k]))return null;
   return {ok:true,review:T.exactReview(r)};
 }
-const prepareTab=target=>scopedOperation(target,'companion.prepareFinal',{},result=>validatePrepared(result,target));
-const cancelTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'companion.cancelFinal',{attemptId},r=>r?.ok===true?{ok:true}:null):{ok:false};
+const prepareTab=target=>scopedOperation(target,W.contentType('prepareFinal'),{},result=>validatePrepared(result,target));
+const cancelTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,W.contentType('cancelFinal'),{attemptId},r=>r?.ok===true?{ok:true}:null):{ok:false};
 const authorizeTab=(target,attemptId,confirmed)=>uuid(attemptId)&&confirmed===true?
-  scopedOperation(target,'companion.authorizeFinal',{attemptId,confirmed:true},r=>
+  scopedOperation(target,W.contentType('authorizeFinal'),{attemptId,confirmed:true},r=>
     r?.ok===true&&r.status==='pending'?{ok:true,status:'pending'}:r?.ok===false?{ok:false,reason:'authorization-blocked'}:null,true):{ok:false,reason:'invalid-review'};
 // Manual public retrieval, separate storage and single flight. No tab or cache access.
 const C=globalThis.RewardsPublicCatalog,catalogKey='publicCampaignCatalogV1';
@@ -143,7 +142,7 @@ function refreshCatalog(){
 }
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
-  if(m?.type==='companion.observation'){
+  if(m?.type===W.observationType){
     if(!Number.isInteger(sender.tab?.id)||sender.frameId!==0||!sender.documentId||
        (sender.documentLifecycle&&sender.documentLifecycle!=='active')||originOf(sender.tab.url)!==originOf(sender.url))return {ok:false,reason:'untrusted-source'};
     const report=D.validate(m.report,originOf(sender.url));
@@ -152,7 +151,8 @@ async function handle(m,sender){
     await chrome.action.setTitle({tabId:sender.tab.id,title:report.status==='recognized'?'Rewards Companion: recognized':'Rewards Companion: diagnostic-only'}).catch(()=>{});
     return record(report,m.reason===undefined?'structure-change':m.reason);
   }
-  if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
+  if(m?.type!==W.workspaceType||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
+  if(!W.has(m.op))return {ok:false,reason:'unsupported-command'};
   if(m.op==='getCatalog'){
     const catalog=await readCatalog();
     return catalog?{ok:true,catalog}:{ok:false,reason:'catalog-storage-invalid'};
@@ -183,7 +183,7 @@ async function handle(m,sender){
   return {ok:false,reason:'unsupported-command'};
 }
 chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-  if(!['companion.observation','companion.workspace'].includes(m?.type))return;
+  if(![W.observationType,W.workspaceType].includes(m?.type))return;
   handle(m,sender).then(reply,()=>reply({ok:false,reason:'operation-failed'}));return true;
 });
 chrome.tabs.onUpdated.addListener((id,change)=>{

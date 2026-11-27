@@ -1,7 +1,7 @@
 // Generated into a self-contained bookmarklet; this adapter is page-world only.
 // Explicit foreground review only; no passive recording or remote code loading.
 function launchBookmarklet(markup,css){
- const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
+ const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,W=globalThis.RewardsWorkspaceContract;
  if(window.top!==window||!D.allowedOrigin(location.origin))return;
  const existing=document.getElementById('rewards-companion-dev');
  if(existing){if(existing.dataset.rewardsCompanion==='read-only'){existing.dispatchEvent(new Event('rewards-companion-close'));existing.remove();}return;}
@@ -28,7 +28,7 @@ function launchBookmarklet(markup,css){
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
    const current=inspect();
    if(op==='inspect')return current;
-   if(op==='revealReward'||op==='exportRewards'||op==='previewImport'||op==='editCache'||op==='reconcileSuccess'||op==='prepareFinal'||op==='cancelFinal'||op==='authorizeFinal'){
+   if(W.isScoped(op)){
      const t=fields.target,c=current.target;
      if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
      if(op==='prepareFinal'){
