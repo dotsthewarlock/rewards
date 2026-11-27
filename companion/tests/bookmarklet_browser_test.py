@@ -19,11 +19,11 @@ with sync_playwright() as p:
     page.goto("https://getmybonus.ca/CA1126VANW/en")
     page.evaluate(script)
     host=page.locator("#rewards-companion-dev")
-    expect(host).to_contain_text("Read-only legacy cache")
+    expect(host).to_contain_text("Legacy cache management")
     expect(host).to_contain_text("1 pending")
     expect(host).to_contain_text("•••• 0001")
     host.get_by_label("Redemption codes").fill("Receipt: 000000000000000000000000000001\n012345678901234567890123456789")
-    host.get_by_role("button",name="Preview import").click()
+    host.get_by_role("button",name="Preview").click()
     expect(host.locator("#importResult")).to_contain_text("1 ready · 1 duplicates")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
     assert page.evaluate("typeof globalThis.RewardsDiscovery")== "undefined"
@@ -39,8 +39,23 @@ with sync_playwright() as p:
     host.get_by_role("button",name="Settings",exact=True).click()
     expect(host).to_contain_text("Background recording requires the extension")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
+    # No writes in the earlier read-only journey. Now enable a ready fixture.
+    page.evaluate("""()=>{document.body.dataset.slug='CA1126VANW';localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued'}]));}""")
+    host.get_by_role("button",name="Refresh connection").click()
+    host.get_by_role("button",name="Queue",exact=True).click()
+    host.get_by_label("Redemption codes").fill("012345678901234567890123456789")
+    host.get_by_role("button",name="Add to queue").click()
+    expect(host.locator("#announcement")).to_contain_text("1 added")
+    rows=page.evaluate("JSON.parse(localStorage.getItem('bs_rewards:CA1126VANW:queue'))")
+    assert rows[0]["id"]=="legacy" and rows[1]["code"]=="012345678901234567890123456789"
+    host.get_by_role("button",name="Settings",exact=True).click()
+    host.get_by_label("New redemption email").fill("fixture@example.invalid")
+    host.get_by_role("button",name="Save email").click()
+    expect(host.locator("#announcement")).to_contain_text("Preference saved")
+    assert page.evaluate("localStorage.getItem('bs_rewards:CA1126VANW:email')")=="fixture@example.invalid"
+    assert page.evaluate("window.merchantActions===0 && !localStorage.getItem('bs_rewards:CA1126VANW:active')")
     page.evaluate(script)
     expect(host).to_have_count(0)
     assert not errors,errors
     browser.close()
-    print("Shared bookmarklet workspace, explicit export, stale identity, no writes or merchant actions PASS")
+    print("Shared bookmarklet workspace, explicit cache edits, read-only mount, stale identity and no merchant actions PASS")

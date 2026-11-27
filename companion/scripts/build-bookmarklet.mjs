@@ -31,5 +31,5 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
  fs.mkdirSync(out,{recursive:true});
  fs.writeFileSync(path.join(out,'bookmarklet.js'),js);
  fs.writeFileSync(path.join(out,'bookmarklet.txt'),url+'\n');
- console.log('Built self-contained read-only bookmarklet; '+Buffer.byteLength(url)+' URL bytes');
+ console.log('Built self-contained development bookmarklet; '+Buffer.byteLength(url)+' URL bytes');
 }

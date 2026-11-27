@@ -67,4 +67,23 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("(target)=>exportTab(target)",report["target"])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
         print("sanitized diagnostics persisted; conflict blocks cache read and recording PASS",flush=True)
+        # Explicit edits only after replacing the fixture's pending row with ready.
+        page.evaluate("""()=>{document.body.dataset.slug='CA1126VANW';localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued'}]));}""")
+        page.bring_to_front()
+        fresh=worker.evaluate("(id)=>inspectTab(id)",tab)
+        assert fresh["report"]["status"]=="recognized"
+        target=fresh["target"]
+        page.evaluate("""()=>new Promise(resolve=>{navigator.locks.request('bs_rewards:companion:data-v1',()=>new Promise(release=>{window.releaseEditLock=release;resolve()}))})""")
+        blocked=worker.evaluate("t=>editTab(t,'saveClipboard',true)",target)
+        assert blocked=={"ok":False,"reason":"edit-busy"},blocked
+        page.evaluate("window.releaseEditLock()")
+        page.wait_for_timeout(100)
+        edited=worker.evaluate("([t,text])=>editTab(t,'importQueue',text)",[target,"012345678901234567890123456789"])
+        assert edited=={"ok":True,"queued":1,"duplicates":0,"overflow":0,"recognized":1},edited
+        rows=page.evaluate("JSON.parse(localStorage.getItem('bs_rewards:CA1126VANW:queue'))")
+        assert rows[0]["id"]=="legacy" and rows[1]["code"]=="012345678901234567890123456789"
+        assert worker.evaluate("t=>editTab(t,'saveEmail','fixture@example.invalid')",target)=={"ok":True}
+        assert page.evaluate("localStorage.getItem('bs_rewards:CA1126VANW:email')")=="fixture@example.invalid"
+        assert page.evaluate("window.clicks===0 && !localStorage.getItem('bs_rewards:CA1126VANW:active')")
+        print("MV3 explicit cache edits and origin-shared page-world lock PASS",flush=True)
     finally:ctx.close()

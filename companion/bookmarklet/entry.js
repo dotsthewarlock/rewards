@@ -1,5 +1,5 @@
 // Generated into a self-contained bookmarklet; this adapter is page-world only.
-// No claim authority, data writes, passive recording or remote code loading.
+// Explicit cache edits only; no claim authority, passive recording or remote code loading.
 function launchBookmarklet(markup,css){
  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
  if(window.top!==window||!D.allowedOrigin(location.origin))return;
@@ -24,10 +24,17 @@ function launchBookmarklet(markup,css){
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
    const current=inspect();
    if(op==='inspect')return current;
-   if(op==='exportRewards'||op==='previewImport'){
+   if(op==='exportRewards'||op==='previewImport'||op==='editCache'){
      const t=fields.target,c=current.target;
      if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
      if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
+     if(op==='editCache'){
+       const current=()=>{
+         const now=D.report(document);
+         return host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===c.origin&&now.campaign===c.campaign;
+       };
+       return L.editCache(localStorage,navigator.locks,c.campaign,fields.edit,fields.value,current);
+     }
      const result=await L.previewImport(localStorage,c.campaign,fields.text);
      const now=inspect().target;
      return host.isConnected&&now?.origin===c.origin&&now?.campaign===c.campaign&&now?.documentToken===c.documentToken?result:{ok:false,reason:'context-changed'};

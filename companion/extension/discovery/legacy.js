@@ -11,7 +11,9 @@
   const count=x=>Number.isInteger(x)&&x>=0&&x<=999;
   function readRows(storage,slug,name){
     if(!validSlug(slug))throw Error('invalid-campaign');
-    const raw=storage.getItem(key(slug,name));
+    return decodeRows(storage.getItem(key(slug,name)));
+  }
+  function decodeRows(raw){
     const rows=raw===null?[]:JSON.parse(raw);
     if(!Array.isArray(rows)||rows.length>999||rows.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error('invalid-cache');
     return rows;
@@ -131,5 +133,67 @@
     const {queued,duplicates,overflow,recognized}=input;
     return {ok:true,queued,duplicates,overflow,recognized};
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview});
+  // Origin-scoped Web Lock shared by both new distributions. The frozen v15
+  // does not participate in Web Locks: users must not run it concurrently.
+  // Check its activity markers and compare the relevant raw cache before edits.
+  const editLock='bs_rewards:companion:data-v1';
+  const editReasons=Object.freeze(['context-changed','legacy-busy','edit-busy','lock-unavailable','invalid-input','unreadable-cache','cache-changed','edit-outcome-unknown']);
+  const failEdit=reason=>({ok:false,reason});
+  const normalizedEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@]+@[^\s@]+$/.test(value.trim())?value.trim():null;
+  function validEdit(op,value){
+    if(op==='importQueue')return typeof value==='string'&&value.length<=262144;
+    if(op==='saveEmail')return normalizedEmail(value)!==null;
+    if(op==='saveClipboard')return typeof value==='boolean';
+    return false;
+  }
+  async function editCache(storage,locks,slug,op,value,contextValid){
+    if(!validSlug(slug)||!validEdit(op,value)||typeof contextValid!=='function')return failEdit('invalid-input');
+    if(!locks||typeof locks.request!=='function')return failEdit('lock-unavailable');
+    let attempted=false;
+    try{
+      return await locks.request(editLock,{mode:'exclusive',ifAvailable:true},async lock=>{
+        if(!lock)return failEdit('edit-busy');
+        if(!contextValid())return failEdit('context-changed');
+        const indexKey='bs_rewards:slug_index_v1';
+        const field=op==='importQueue'?'queue':op==='saveEmail'?'email':'clipboard';
+        const names=[...new Set(['queue','history','active','lock',field])];
+        const keys=[...names.map(name=>key(slug,name)),indexKey];
+        const raw=Object.fromEntries(keys.map(k=>[k,storage.getItem(k)]));
+        const queue=decodeRows(raw[key(slug,'queue')]),history=decodeRows(raw[key(slug,'history')]);
+        const occupied=name=>raw[key(slug,name)]!==null&&raw[key(slug,name)]!=='null';
+        if(occupied('active')||occupied('lock')||queue.some(r=>['pending','processing'].includes(r.state)))return failEdit('legacy-busy');
+        if(queue.some(r=>!states.includes(r.state)||!barcode(r.code)))return failEdit('unreadable-cache');
+        const index=raw[indexKey]===null?[]:JSON.parse(raw[indexKey]);
+        if(!Array.isArray(index)||index.some(s=>typeof s!=='string'||!globalThis.RewardsDiscovery.slug(s)))return failEdit('unreadable-cache');
+        let next,result={ok:true};
+        if(op==='importQueue'){
+          const plan=await planQueueImport(queue,history,value);
+          const {queued,duplicates,overflow,recognized}=plan;
+          result={ok:true,queued,duplicates,overflow,recognized};
+          if(!plan.additions.length)return result;
+          const now=Date.now();
+          next=JSON.stringify([...queue,...plan.additions.map(r=>({id:crypto.randomUUID(),...r,created:now,updated:now}))]);
+        }else next=op==='saveEmail'?normalizedEmail(value):value?'1':'0';
+        if(!contextValid())return failEdit('context-changed');
+        if(keys.some(k=>storage.getItem(k)!==raw[k]))return failEdit('cache-changed');
+        // Register the slug first, preserving every existing entry. A partial
+        // index-only update is harmless. Never roll back over another writer.
+        const checkedWrite=(k,v)=>{
+          attempted=true;
+          storage.setItem(k,v);
+          if(storage.getItem(k)!==v)throw Error('readback');
+        };
+        if(!index.includes(slug))checkedWrite(indexKey,JSON.stringify([...index,slug]));
+        if(!contextValid()||names.some(name=>storage.getItem(key(slug,name))!==raw[key(slug,name)]))return failEdit(attempted?'edit-outcome-unknown':'cache-changed');
+        checkedWrite(key(slug,field),next);
+        return result;
+      });
+    }catch{return failEdit(attempted?'edit-outcome-unknown':'unreadable-cache');}
+  }
+  function validateEdit(input,op){
+    if(input?.ok===false&&Object.keys(input).length===2&&editReasons.includes(input.reason))return failEdit(input.reason);
+    if(op==='importQueue')return validatePreview(input);
+    return input?.ok===true&&Object.keys(input).length===1?{ok:true}:null;
+  }
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit});
 })();

@@ -79,3 +79,55 @@ test('legacy detail packet is masked, bounded and rejects injected fields; previ
  assert.equal(L.validatePreview({...p,recognized:2}),null);
  assert.equal(JSON.stringify([...map]),before);
 });
+
+const testLock={request:async(name,options,fn)=>{
+ assert.equal(name,L.editLock);assert.deepEqual(options,{mode:'exclusive',ifAvailable:true});return fn({});
+}};
+function editableStore(){
+ const map=new Map([['bs_rewards:'+slug+':queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued',note:'preserve',created:7}])],['bs_rewards:slug_index_v1',JSON.stringify(['CA1026CK1'])]]);
+ let writes=0;
+ return {map,get writes(){return writes;},getItem:k=>map.get(k)??null,setItem(k,v){writes++;map.set(k,v);}};
+}
+test('explicit cache import and preferences retain v15 keys, fields and leading zeros',async()=>{
+ const storage=editableStore(),a='000000000000000000000000000001',b='012345678901234567890123456789';
+ const result=await L.editCache(storage,testLock,slug,'importQueue',a+'\n'+b,()=>true);
+ assert.deepEqual(result,{ok:true,queued:1,duplicates:1,overflow:0,recognized:2});
+ const queue=JSON.parse(storage.getItem('bs_rewards:'+slug+':queue'));
+ assert.deepEqual(queue[0],{id:'legacy',code:a,state:'queued',note:'preserve',created:7});
+ assert.equal(queue[1].state,'duplicate');assert.equal(queue[2].code,b);assert.equal(queue[2].state,'queued');
+ assert.equal(typeof queue[2].id,'string');assert.ok(Number.isInteger(queue[2].created));
+ assert.deepEqual(JSON.parse(storage.getItem('bs_rewards:slug_index_v1')),['CA1026CK1',slug]);
+ assert.deepEqual(await L.editCache(storage,testLock,slug,'saveEmail','test@example.invalid',()=>true),{ok:true});
+ assert.equal(storage.getItem('bs_rewards:'+slug+':email'),'test@example.invalid');
+ assert.deepEqual(await L.editCache(storage,testLock,slug,'saveClipboard',true,()=>true),{ok:true});
+ assert.equal(storage.getItem('bs_rewards:'+slug+':clipboard'),'1');
+ assert.equal(storage.getItem('bs_rewards:'+slug+':active'),null);
+ assert.equal(storage.getItem('bs_rewards:'+slug+':auto'),null);
+});
+test('edit gate fails closed on pending, active, legacy locks, unavailable locks or stale context',async()=>{
+ for(const name of ['active','lock','queue']){
+  const s=editableStore();
+  s.map.set('bs_rewards:'+slug+':'+name,name==='queue'?JSON.stringify([{code:'000000000000000000000000000001',state:'pending'}]):'{}');
+  assert.equal((await L.editCache(s,testLock,slug,'saveClipboard',true,()=>true)).reason,'legacy-busy');
+  assert.equal(s.writes,0);
+ }
+ const s=editableStore();
+ assert.equal((await L.editCache(s,null,slug,'saveClipboard',true,()=>true)).reason,'lock-unavailable');
+ assert.equal((await L.editCache(s,{request:async(n,o,f)=>f(null)},slug,'saveClipboard',true,()=>true)).reason,'edit-busy');
+ assert.equal((await L.editCache(s,testLock,slug,'saveClipboard',true,()=>false)).reason,'context-changed');
+ assert.equal(s.writes,0);
+ s.map.set('bs_rewards:slug_index_v1','bad');
+ assert.equal((await L.editCache(s,testLock,slug,'saveClipboard',true,()=>true)).reason,'unreadable-cache');
+ assert.equal(s.writes,0);
+});
+test('edit rechecks stale cache and never reports success after storage failure or readback mismatch',async()=>{
+ const s=editableStore();let calls=0;
+ const result=await L.editCache(s,testLock,slug,'saveEmail','test@example.invalid',()=>{
+  if(++calls===2)s.map.set('bs_rewards:'+slug+':history','[]');return true;
+ });
+ assert.equal(result.reason,'cache-changed');assert.equal(s.writes,0);
+ const broken=editableStore();broken.setItem=()=>{throw Error('quota');};
+ assert.equal((await L.editCache(broken,testLock,slug,'saveClipboard',true,()=>true)).reason,'edit-outcome-unknown');
+ const wrong=editableStore();wrong.setItem=()=>{};
+ assert.equal((await L.editCache(wrong,testLock,slug,'saveClipboard',true,()=>true)).reason,'edit-outcome-unknown');
+});

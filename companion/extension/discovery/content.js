@@ -43,12 +43,21 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache'].includes(m?.type))return;
     const report=D.report(document);
     const recognized=!stopped&&report?.status==='recognized';
     if(m.type!=='companion.inspect'){
       if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
       if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
+      if(m.type==='companion.editCache'){
+        // The original v15 overlay is a compatibility warning, not a cooperative lock.
+        const current=()=>{
+          const now=D.report(document);
+          return !stopped&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===m.origin&&now.campaign===m.campaign;
+        };
+        L.editCache(localStorage,navigator.locks,report.campaign,m.op,m.value,current).then(reply,()=>reply({ok:false,reason:'edit-outcome-unknown'}));
+        return true;
+      }
       L.previewImport(localStorage,report.campaign,m.text).then(result=>{
         const now=D.report(document);
         reply(!stopped&&now?.status==='recognized'&&now.origin===m.origin&&now.campaign===m.campaign?result:{ok:false,reason:'context-changed'});

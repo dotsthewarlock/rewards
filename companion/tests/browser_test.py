@@ -70,7 +70,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not errors, errors
         print("reload is inert; no script errors PASS",flush=True)
         page.goto(f"chrome-extension://{ext_id}/index.html")
-        expect(page.locator("main")).to_contain_text("Read-only legacy cache")
+        expect(page.locator("main")).to_contain_text("Legacy cache management")
         expect(page.get_by_role("button",name="Authorize simulated claim")).to_have_count(0)
         print("production-facing workspace contains no demo claim controls PASS",flush=True)
     finally:
