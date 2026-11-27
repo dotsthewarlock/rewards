@@ -1,5 +1,5 @@
 'use strict';
-importScripts('discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js');
+importScripts('discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js','core/public-catalog.js');
 const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns;
 const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(configure);
@@ -89,6 +89,28 @@ const cancelTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'comp
 const authorizeTab=(target,attemptId,confirmed)=>uuid(attemptId)&&confirmed===true?
   scopedOperation(target,'companion.authorizeFinal',{attemptId,confirmed:true},r=>
     r?.ok===true&&r.status==='pending'?{ok:true,status:'pending'}:r?.ok===false?{ok:false,reason:'authorization-blocked'}:null,true):{ok:false,reason:'invalid-review'};
+// Manual public retrieval, separate storage and single flight. No tab or cache access.
+const C=globalThis.RewardsPublicCatalog,catalogKey='publicCampaignCatalogV1';
+async function readCatalog(){
+  const data=await chrome.storage.local.get(catalogKey);
+  return Object.hasOwn(data,catalogKey)?C.validate(data[catalogKey]):C.empty();
+}
+let catalogFlight=null;
+function refreshCatalog(){
+  if(catalogFlight)return catalogFlight;
+  catalogFlight=(async()=>{
+    const prior=await readCatalog();
+    if(!prior)return {ok:false,reason:'catalog-storage-invalid'};
+    if(prior.outcome==='restricted')return {ok:true,catalog:prior};
+    const result=await C.retrieve();
+    const next=C.merge(prior,result.ids,result.outcome,new Date().toISOString());
+    if(!next)return {ok:false,reason:'catalog-retention-blocked'};
+    await chrome.storage.local.set({[catalogKey]:next});
+    const checked=await readCatalog();
+    return JSON.stringify(checked)===JSON.stringify(next)?{ok:true,catalog:checked}:{ok:false,reason:'catalog-storage-unverified'};
+  })().finally(()=>{catalogFlight=null;});
+  return catalogFlight;
+}
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
@@ -101,6 +123,11 @@ async function handle(m,sender){
     return record(report);
   }
   if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
+  if(m.op==='getCatalog'){
+    const catalog=await readCatalog();
+    return catalog?{ok:true,catalog}:{ok:false,reason:'catalog-storage-invalid'};
+  }
+  if(m.op==='refreshCatalog')return refreshCatalog();
   if(m.op==='inspect'){
     const tab=await activeTab(),data=await diagnostics();
     return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length,blocked:data.blocked}};

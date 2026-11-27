@@ -5,6 +5,7 @@ import {esc,button,check} from './components.js';
 export function mountWorkspace(root,request,{recording=true}={}){
 const $=id=>root.getElementById(id);
 let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null;
+let catalog=null,catalogBusy=false,catalogError=false;
 let revealedReward=null,revealEpoch=0,revealTimer=null;
 function hideReward(){revealEpoch++;clearTimeout(revealTimer);revealTimer=null;const shown=!!revealedReward;revealedReward=null;return shown;}
 const editMessage={
@@ -40,6 +41,33 @@ function finalReviewView(){
  const r=reviewed.review;
  return '<section class="surface stack review-data"><h3>Review exact claim</h3><p><strong>Product:</strong> '+esc(r.product)+'</p><p><strong>Reward:</strong> '+esc(r.reward)+' · CAD $'+esc(r.valueRecent)+'</p><p><strong>Barcode:</strong> <span class="mono">'+esc(r.code)+'</span></p><p><strong>Email:</strong> '+esc(r.email)+'</p><p>Merchant terms are checked on the page. Confirm that you reviewed them and this is your eligible purchased product.</p>'+check('finalConfirmed','I confirm the exact claim details and merchant terms',reviewed.confirmed,editing)+button('Authorize reviewed claim','authorizeFinal',{primary:true,disabled:editing||!reviewed.confirmed,extra:'data-value="'+esc(r.attemptId)+'"'})+button('Cancel review','cancelFinal',{disabled:editing})+'</section>';
 }
+async function loadCatalog(refreshPublic=false){
+ if(!recording||catalogBusy)return;
+ catalogBusy=true;catalogError=false;render();
+ try{
+   const result=await request(refreshPublic?'refreshCatalog':'getCatalog');
+   if(result?.ok)catalog=result.catalog;else catalogError=true;
+ }catch{catalogError=true;}
+ catalogBusy=false;
+ if(alive()&&screen==='campaigns'){
+   render();
+   if(refreshPublic){
+     root.querySelector('[data-action="refreshCatalog"]')?.focus({preventScroll:true});
+     $('announcement').textContent=catalogError?'Catalog unavailable. Existing records retained.':'Public directory check finished.';
+   }
+ }
+}
+function catalogView(){
+ if(!recording)return '<p>Public directory refresh requires the extension.</p>';
+ const c=catalog;
+ const restricted=c?.outcome==='restricted';
+ const current=c?.outcome==='verified-directory'&&Date.now()-Date.parse(c.checkedAt)<=86400000;
+ return '<section class="surface stack"><h3>Canadian public catalog</h3><p>Manual directory check only. No claims, verified terms or stock inferred.</p>'+
+ button('Refresh public directory','refreshCatalog',{disabled:catalogBusy||restricted})+
+ '<p role="status">'+esc(catalogBusy?'Checking…':catalogError?'Catalog unavailable; prior evidence retained.':restricted?'Access restricted. Further checks stopped.':c?.checkedAt?(current?'Directory checked ':'Stale or unavailable · last check ')+c.checkedAt:'Not yet checked')+'</p>'+
+ (c?.entries?.length?'<ul class="list">'+c.entries.map(e=>'<li><strong>'+esc(e.campaign)+'</strong><p>'+esc(current&&e.listed?'Listed at last check':'Previously seen · stale')+' · Terms, availability and workflow compatibility unknown</p><p>Last seen: '+esc(e.lastSeen)+'</p></li>').join('')+'</ul>':'<p>No observed identities stored.</p>')+
+ '<a href="https://getmybonus.ca/" target="_blank" rel="noopener noreferrer">Official directory</a></section>';
+}
 function render(){
  const focus=root.activeElement;
  const field=['importDraft','emailDraft','browseSearch'].includes(focus?.id)?focus.id:null;
@@ -73,7 +101,7 @@ function render(){
        (filtered.length?maskedList(filtered,cards?rewardPage:historyPage,cards?'rewardPage':'historyPage',!cards,cards):'<p>No matching records.</p>')+'</section>';
    }
  }else if(screen==='campaigns'){
-   body='<h2>Campaigns</h2>'+(cp?'<section class="surface"><strong>'+esc(cp.name)+'</strong><p>'+esc(cp.products.join(' / '))+'</p><p>'+esc(cp.rewards.join(' / '))+'</p><p>Published claim deadline: '+esc(cp.deadline)+'</p></section>':'<p>No recognized campaign metadata.</p>')+'<p>Recognition is structural evidence only, not verified eligibility or stock.</p>';
+   body='<h2>Campaigns</h2>'+(cp?'<section class="surface"><strong>'+esc(cp.name)+'</strong><p>'+esc(cp.products.join(' / '))+'</p><p>'+esc(cp.rewards.join(' / '))+'</p><p>Published claim deadline: '+esc(cp.deadline)+'</p></section>':'<p>No recognized campaign metadata.</p>')+'<p>Recognition is structural evidence only, not verified eligibility or stock.</p>'+catalogView();
  }else{
    body='<h2>Settings</h2>';
    if(summary?.ok&&state?.target)body+='<section class="surface stack"><h3>Legacy preferences</h3><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p><label for="emailDraft">New redemption email</label><input id="emailDraft" type="email" maxlength="254" autocomplete="off" value="'+esc(emailDraft)+'">'+button('Save email','saveEmail',{disabled:editing||summary.unresolved||!emailDraft.trim()})+check('clipboardPreference','Saved clipboard preference',summary.clipboard,editing||summary.unresolved)+'<p class="muted">Preferences do not authorize claims. Keep legacy v15 closed while editing.</p></section>';
@@ -113,7 +141,8 @@ async function edit(op,value){
 }
 root.addEventListener('click',async e=>{
  const target=e.target.closest('[data-action]');if(!target||target.disabled)return;
- if(target.dataset.action==='navigate'){hideReward();discardReview();screen=target.dataset.value;render();$('workspace').focus();}
+ if(target.dataset.action==='navigate'){hideReward();discardReview();screen=target.dataset.value;render();$('workspace').focus();if(screen==='campaigns')await loadCatalog();}
+ if(target.dataset.action==='refreshCatalog'&&e.isTrusted&&screen==='campaigns')await loadCatalog(true);
  if(target.dataset.action==='refresh'){discardReview();await refresh();}
  if(target.dataset.action==='queuePage'){page=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
