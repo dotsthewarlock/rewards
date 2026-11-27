@@ -66,29 +66,60 @@
     if(input.rows.some(row=>!row||Object.keys(row).length!==fields.length||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))return null;
     return {ok:true,rows:input.rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
   }
+  // Opaque selection binds an index to exact cache bytes in this document.
+  // Never persist the token or cache snapshot, or include either in diagnostics.
+  const rewardSnapshots=new WeakMap();
+  const selectionToken=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
+  function rewardSnapshot(storage,slug,raw){
+    let current=rewardSnapshots.get(storage);
+    if(!current||current.slug!==slug||current.raw!==raw){
+      current={slug,raw,token:crypto.randomUUID()};
+      rewardSnapshots.set(storage,current);
+    }
+    return current.token;
+  }
+  function validSelection(snapshot,index){return selectionToken(snapshot)&&Number.isInteger(index)&&index>=0&&index<999;}
+  function revealReward(storage,slug,snapshot,index){
+    const failure={ok:false,reason:'stale-selection'};
+    if(!validSlug(slug)||!validSelection(snapshot,index))return failure;
+    try{
+      const raw=storage.getItem(key(slug,'giftcards'));
+      if(rewardSnapshot(storage,slug,raw)!==snapshot)return failure;
+      const row=decodeRows(raw)[index];
+      if(!row||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096))return failure;
+      return {ok:true,snapshot,index,row:Object.fromEntries(fields.map(k=>[k,row[k]]))};
+    }catch{return failure;}
+  }
+  function validateReveal(input,snapshot,index){
+    if(input?.ok!==true||Object.keys(input).length!==4||input.snapshot!==snapshot||input.index!==index||!validSelection(snapshot,index))return null;
+    const row=input.row;
+    if(!row||Object.keys(row).length!==fields.length||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096))return null;
+    return {ok:true,snapshot,index,row:Object.fromEntries(fields.map(k=>[k,row[k]]))};
+  }
   // Masked view records are for the foreground workspace, never diagnostics.
   function details(storage,slug){
     try{
       const queue=readRows(storage,slug,'queue').map(r=>({last4:last4(r.code),state:states.includes(r.state)?r.state:'other'}));
       const history=readRows(storage,slug,'history').map(r=>({last4:last4(r.code)||(typeof r.last4==='string'&&/^\d{4}$/.test(r.last4)?r.last4:null)}));
       // Foreground view only: no full card number, PIN, source code or arbitrary note.
-      const rewards=readRows(storage,slug,'giftcards').map(r=>({
+      const raw=storage.getItem(key(slug,'giftcards'));
+      const rewards=decodeRows(raw).map(r=>({
         last4:typeof r.gcNumber==='string'&&/^[A-Za-z0-9 -]{8,128}$/.test(r.gcNumber)&&r.gcNumber.replace(/[ -]/g,'').length>=8?r.gcNumber.replace(/[ -]/g,'').slice(-4):null,
         value:typeof r.valueRecent==='string'&&/^\d{1,7}\.\d{2}$/.test(r.valueRecent)?r.valueRecent:null
       }));
-      return {ok:true,queue,history,rewards};
+      return {ok:true,queue,history,rewards,rewardSnapshot:rewardSnapshot(storage,slug,raw)};
     }catch{return {ok:false,reason:'unreadable-cache'};}
   }
   function validateDetails(input){
     const suffix=x=>x===null||(typeof x==='string'&&/^\d{4}$/.test(x));
     const rows=(value,keys)=>Array.isArray(value)&&count(value.length)&&value.every(r=>r&&typeof r==='object'&&Object.keys(r).length===keys.length&&keys.every(k=>Object.hasOwn(r,k))&&suffix(r.last4));
     const rewards=input?.rewards;
-    if(input?.ok!==true||Object.keys(input).length!==4||!rows(input.queue,['last4','state'])||
+    if(input?.ok!==true||Object.keys(input).length!==5||!selectionToken(input.rewardSnapshot)||!rows(input.queue,['last4','state'])||
        !rows(input.history,['last4'])||input.queue.some(r=>![...states,'other'].includes(r.state))||
        !Array.isArray(rewards)||!count(rewards.length)||rewards.some(r=>!r||Object.keys(r).length!==2||
        !(r.last4===null||typeof r.last4==='string'&&/^[A-Za-z0-9]{4}$/.test(r.last4))||
        !(r.value===null||typeof r.value==='string'&&/^\d{1,7}\.\d{2}$/.test(r.value))))return null;
-    return {ok:true,queue:input.queue.map(r=>({last4:r.last4,state:r.state})),history:input.history.map(r=>({last4:r.last4})),rewards:rewards.map(r=>({last4:r.last4,value:r.value}))};
+    return {ok:true,queue:input.queue.map(r=>({last4:r.last4,state:r.state})),history:input.history.map(r=>({last4:r.last4})),rewards:rewards.map(r=>({last4:r.last4,value:r.value})),rewardSnapshot:input.rewardSnapshot};
   }
   function parseBarcodes(text){
     if(typeof text!=='string'||text.length>262144)throw Error('input-too-large');
@@ -219,5 +250,5 @@
     if(op==='importQueue')return validatePreview(input);
     return input?.ok===true&&Object.keys(input).length===1?{ok:true}:null;
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit,key,barcode,validSlug,decodeRows,readSnapshot,unchanged,checkedWrite,historyHash,historyMatcher,historyMatches,normalizedEmail});
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,validSelection,revealReward,validateReveal,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit,key,barcode,validSlug,decodeRows,readSnapshot,unchanged,checkedWrite,historyHash,historyMatcher,historyMatches,normalizedEmail});
 })();

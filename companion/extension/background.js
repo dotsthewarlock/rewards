@@ -64,9 +64,11 @@ async function scopedOperation(target,type,fields,validate,write=false){
     const check=await inspectTab(tab.id);
     const finalTab=await activeTab();
     if(finalTab?.id!==tab.id||finalTab.url!==tab.url||check.target?.documentToken!==target.documentToken||check.target?.campaign!==target.campaign||check.target?.origin!==target.origin)return unavailable();
+    if(type==='companion.revealReward'&&check.details?.rewardSnapshot!==fields.snapshot)return unavailable();
     return validate(result)||unavailable();
   }catch{return unavailable();}
 }
+const revealTab=(target,snapshot,index)=>L.validSelection(snapshot,index)?scopedOperation(target,'companion.revealReward',{snapshot,index},r=>L.validateReveal(r,snapshot,index)):{ok:false,reason:'invalid-selection'};
 const exportTab=target=>scopedOperation(target,'companion.exportRewards',{},L.validateExport);
 const previewTab=(target,text)=>typeof text==='string'&&text.length<=262144?scopedOperation(target,'companion.previewImport',{text},L.validatePreview):{ok:false,reason:'invalid-input'};
 const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,'companion.editCache',{op,value},result=>L.validateEdit(result,op),true):{ok:false,reason:'invalid-input'};
@@ -106,6 +108,7 @@ async function handle(m,sender){
     if(m.enabled){const tab=await activeTab();if(tab?.id!==undefined){const result=await inspectTab(tab.id);if(result.report?.status==='recognized')await record(result.report);}}
     return {ok:true};
   }
+  if(m.op==='revealReward')return revealTab(m.target,m.snapshot,m.index);
   if(m.op==='exportRewards')return exportTab(m.target);
   if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='editCache')return editTab(m.target,m.edit,m.value);

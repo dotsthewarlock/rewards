@@ -70,7 +70,8 @@ test('legacy detail packet is masked, bounded and rejects injected fields; previ
  const map=new Map([['bs_rewards:'+slug+':queue',JSON.stringify([{code:a,state:'queued',note:'SECRET'}])],['bs_rewards:'+slug+':history',JSON.stringify([{h:'SECRET_HASH',last4:'1234'}])]]);
  const store={getItem:k=>map.get(k)??null,setItem(){throw Error('unexpected write');}};
  const before=JSON.stringify([...map]),d=L.details(store,slug);
- assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}],rewards:[]});
+ assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}],rewards:[],rewardSnapshot:d.rewardSnapshot});
+ assert.ok(L.validSelection(d.rewardSnapshot,0));
  assert.deepEqual(L.validateDetails(d),d);
  assert.equal(L.validateDetails({...d,queue:[{last4:'6789',state:'queued',code:a}]}),null);
  const p=await L.previewImport(store,slug,a);
@@ -143,6 +144,29 @@ test('masked reward browsing never includes full reward credentials or arbitrary
  const d=L.details(storage,slug);
  assert.deepEqual(d.rewards,[{last4:'3456',value:'10.00'},{last4:null,value:null}]);
  assert.deepEqual(L.validateDetails(d),d);
- assert.doesNotMatch(JSON.stringify(d),/1234567890123456|PRIVATE_FIXTURE|0000|0123/);
+ assert.doesNotMatch(JSON.stringify(d.rewards),/1234567890123456|PRIVATE_FIXTURE|0000|0123/);
  assert.equal(L.validateDetails({...d,rewards:[{last4:'3456',value:'10.00',extra:'PRIVATE_FIXTURE'}]}),null);
+});
+
+test('individual reveal binds exact snapshot, rejects masked collisions after reorder or replacement, keeps bulk export separate',()=>{
+ const first={cardMerchant:'Fixture A',valueRecent:'10.00',gcNumber:'SYNTHETIC_A1234',gcPin:'test-A'};
+ const second={cardMerchant:'Fixture B',valueRecent:'10.00',gcNumber:'SYNTHETIC_B1234',gcPin:'test-B'};
+ let raw=JSON.stringify([first,second]);
+ const storage={getItem:k=>k===L.key(slug,'giftcards')?raw:null,setItem(){throw Error('read-only');}};
+ const d=L.details(storage,slug);
+ assert.equal(L.details(storage,slug).rewardSnapshot,d.rewardSnapshot);
+ const one=L.revealReward(storage,slug,d.rewardSnapshot,1);
+ assert.deepEqual(one,{ok:true,snapshot:d.rewardSnapshot,index:1,row:second});
+ assert.deepEqual(L.validateReveal(one,d.rewardSnapshot,1),one);
+ assert.equal(L.validateReveal({...one,rows:[first,second]},d.rewardSnapshot,1),null);
+ assert.equal(L.validateReveal(one,d.rewardSnapshot,0),null);
+ assert.deepEqual(L.exportRows(storage,slug).rows,[first,second]);
+ raw=JSON.stringify([second,first]);
+ assert.equal(L.revealReward(storage,slug,d.rewardSnapshot,1).ok,false);
+ const fresh=L.details(storage,slug);
+ assert.notEqual(fresh.rewardSnapshot,d.rewardSnapshot);
+ assert.deepEqual(L.revealReward(storage,slug,fresh.rewardSnapshot,1).row,first);
+ raw=JSON.stringify([second,{...first,gcPin:'changed'}]);
+ assert.equal(L.revealReward(storage,slug,fresh.rewardSnapshot,1).ok,false);
+ assert.equal(L.revealReward(storage,slug,fresh.rewardSnapshot,999).ok,false);
 });

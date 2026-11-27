@@ -28,7 +28,7 @@ function launchBookmarklet(markup,css){
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
    const current=inspect();
    if(op==='inspect')return current;
-   if(op==='exportRewards'||op==='previewImport'||op==='editCache'||op==='reconcileSuccess'||op==='prepareFinal'||op==='cancelFinal'||op==='authorizeFinal'){
+   if(op==='revealReward'||op==='exportRewards'||op==='previewImport'||op==='editCache'||op==='reconcileSuccess'||op==='prepareFinal'||op==='cancelFinal'||op==='authorizeFinal'){
      const t=fields.target,c=current.target;
      if(!t||!c||t.origin!==c.origin||t.campaign!==c.campaign||t.documentToken!==c.documentToken)return {ok:false,reason:'context-changed'};
      if(op==='prepareFinal'){
@@ -45,6 +45,7 @@ function launchBookmarklet(markup,css){
        const binding=prepared;prepared=null;
        return binding.authorize();
      }
+     if(op==='revealReward')return L.revealReward(localStorage,c.campaign,fields.snapshot,fields.index);
      if(op==='exportRewards')return L.exportRows(localStorage,c.campaign);
      if(op==='reconcileSuccess'){
        const current=()=>host.isConnected&&document.visibilityState==='visible'&&!document.getElementById('bsp');

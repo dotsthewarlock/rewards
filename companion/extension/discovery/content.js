@@ -44,7 +44,7 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess','companion.prepareFinal','companion.authorizeFinal','companion.cancelFinal'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.revealReward','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess','companion.prepareFinal','companion.authorizeFinal','companion.cancelFinal'].includes(m?.type))return;
     const report=D.report(document);
     const recognized=!stopped&&report?.status==='recognized';
     if(m.type!=='companion.inspect'){
@@ -68,6 +68,7 @@
         binding.authorize().then(reply,()=>reply({ok:false,reason:'pending-unknown'}));
         return true;
       }
+      if(m.type==='companion.revealReward')return reply(L.revealReward(localStorage,report.campaign,m.snapshot,m.index));
       if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
       if(m.type==='companion.reconcileSuccess'){
         const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');

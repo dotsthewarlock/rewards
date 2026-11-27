@@ -174,22 +174,17 @@ root.addEventListener('click',async e=>{
  }
  if(target.dataset.action==='toggleReward'){
    if(!e.isTrusted||screen!=='rewards'||browseTab!=='cards'||!state?.target)return;
-   const index=Number(target.dataset.value),expected=state.details?.rewards?.[index],selected=state.target,n=serial;
-   if(!expected||!Number.isInteger(index))return;
+   const index=Number(target.dataset.value),snapshot=state.details?.rewardSnapshot,expected=state.details?.rewards?.[index],selected=state.target,n=serial;
+   if(!expected||!snapshot||!Number.isInteger(index))return;
    const wasShown=revealedReward?.index===index;
    hideReward();render();
    if(wasShown)return;
    const epoch=revealEpoch;
    try{
-     // Reuse the existing explicit, scoped local export. Keep only the chosen record
-     // in the foreground workspace; never write it to diagnostics or storage.
-     const result=await request('exportRewards',{target:selected});
+     const result=await request('revealReward',{target:selected,snapshot,index});
      if(epoch!==revealEpoch||n!==serial||screen!=='rewards'||browseTab!=='cards'||!alive()||document.hidden||!sameTarget(selected,state?.target))return;
-     const row=result?.rows?.[index];
-     if(!result?.ok||result.rows.length!==state.details.rewards.length||!row||
-        !['cardMerchant','gcNumber','gcPin','valueRecent'].every(k=>typeof row[k]==='string')||
-        (expected.value!==null&&row.valueRecent!==expected.value)||
-        (expected.last4!==null&&row.gcNumber.replace(/[ -]/g,'').slice(-4)!==expected.last4))throw Error();
+     if(!result?.ok||result.snapshot!==snapshot||result.index!==index||state.details?.rewardSnapshot!==snapshot||!result.row)throw Error();
+     const row=result.row;
      revealedReward={index,merchant:row.cardMerchant,number:row.gcNumber,pin:row.gcPin};
      revealTimer=setTimeout(()=>{if(hideReward()&&alive()&&screen==='rewards')render();},30000);
      render();$('announcement').textContent='One saved reward revealed temporarily.';

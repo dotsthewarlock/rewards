@@ -56,6 +56,16 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert report["details"]["queue"]==[{"last4":"0001","state":"pending"}]
         assert report["details"]["rewards"]==[{"last4":None,"value":"10.00"}]
         assert "TEST_SECRET_CARD" not in json.dumps(report["details"])
+        snapshot=report["details"]["rewardSnapshot"]
+        one=worker.evaluate("([t,s])=>revealTab(t,s,0)",[report["target"],snapshot])
+        assert one=={"ok":True,"snapshot":snapshot,"index":0,"row":exported["rows"][0]}
+        assert not worker.evaluate("([t,s])=>revealTab(t,s,0)",[stale,snapshot])["ok"]
+        page.evaluate("""()=>{const k='bs_rewards:CA1126VANW:giftcards';window.originalGift=localStorage.getItem(k);const rows=JSON.parse(window.originalGift);rows[0].gcPin='CHANGED_FIXTURE';localStorage.setItem(k,JSON.stringify(rows))}""")
+        assert not worker.evaluate("([t,s])=>revealTab(t,s,0)",[report["target"],snapshot])["ok"]
+        page.evaluate("localStorage.setItem('bs_rewards:CA1126VANW:giftcards',window.originalGift)")
+        assert not worker.evaluate("([t,s])=>revealTab(t,s,0)",[report["target"],snapshot])["ok"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+        print("MV3 connected single-record reveal transport, stale document and changed cache rejected PASS",flush=True)
         draft="Receipt: 000000000000000000000000000001\n012345678901234567890123456789"
         preview=worker.evaluate("([target,text])=>previewTab(target,text)",[report["target"],draft])
         assert preview=={"ok":True,"queued":1,"duplicates":1,"overflow":0,"recognized":2}
