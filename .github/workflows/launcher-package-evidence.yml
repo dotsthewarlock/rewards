@@ -1,4 +1,4 @@
-name: One-time read-only V0.6 package evidence
+name: One-time read-only V0.6 activation evidence
 on:
   push:
     branches: [launcher-package-verification]
@@ -6,32 +6,40 @@ permissions:
   contents: read
   actions: read
 jobs:
-  prepare:
+  activate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify and prepare exact existing package without publishing
+      - name: Run actual activation gate after staged deployment and verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          for id in 46071696392 46071696604; do
+            for attempt in $(seq 1 36); do
+              result=$(gh api --method GET repos/dotsthewarlock/rewards/actions/runs/"$id" --jq '[.head_sha,.head_branch,.status,.conclusion]|join(" ")')
+              case "$result" in
+                "1bba75beb835bfaf971bdf7c294461cfb9e0cd32 main completed success") break ;;
+                "1bba75beb835bfaf971bdf7c294461cfb9e0cd32 main completed "*) echo "Staged deployment gate failed"; exit 1 ;;
+                "1bba75beb835bfaf971bdf7c294461cfb9e0cd32 main "*) sleep 10 ;;
+                *) echo "Unexpected run identity"; exit 1 ;;
+              esac
+              test "$attempt" != 36
+            done
+          done
           git fetch --no-tags origin main
+          test "$(git rev-parse FETCH_HEAD)" = 1bba75beb835bfaf971bdf7c294461cfb9e0cd32
           git worktree add --detach "$RUNNER_TEMP/launcher-main" FETCH_HEAD
           cd "$RUNNER_TEMP/launcher-main"
-          python "$GITHUB_WORKSPACE/companion/launcher/tools/publication.py" prepare --commit de3cb5d394100851e2a4005dc9c1e0420311cc60 --run 46049375697 --checkpoint "Existing accepted V0.6 automated candidate; preserve exact package and source, native/live acceptance pending."
+          python companion/launcher/tools/publication.py activate --version 0.6.0-dev-de3cb5d39410
+          test "$(git diff --name-only)" = companion/launcher/channels.json
           python - <<'PY'
           import base64, pathlib, hashlib
-          folder=pathlib.Path("companion/launcher/releases/0.6.0-dev-de3cb5d39410")
-          package=folder/"rewards-companion-0.6.0-dev-de3cb5d39410-development.zip"
-          data=package.read_bytes()
-          assert hashlib.sha256(data).hexdigest()=="0d698b40f7b32f26261865243d4bdb68ab70b6214a33f17dddfd87eeda3badec"
-          # Public release candidate bytes only; transport to approved repository connector.
-          encoded=base64.b64encode(data).decode()
-          for i in range(0,len(encoded),4096):
-              print("PUBLIC_PACKAGE_CHUNK:"+str(i//4096)+":"+encoded[i:i+4096],flush=True)
-          print("PUBLIC_PACKAGE_END:"+str(len(encoded)),flush=True)
+          data=pathlib.Path("companion/launcher/channels.json").read_bytes()
+          print("VERIFIED_ACTIVATION_MANIFEST:"+base64.b64encode(data).decode())
+          print("VERIFIED_ACTIVATION_SHA256:"+hashlib.sha256(data).hexdigest())
           PY
