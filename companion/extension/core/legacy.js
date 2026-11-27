@@ -66,7 +66,7 @@
     if(input.rows.some(row=>!row||Object.keys(row).length!==fields.length||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))return null;
     return {ok:true,rows:input.rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
   }
-  // Opaque selection binds an index to exact cache bytes in this document.
+  // Opaque selection binds an index to exact cache bytes for one document
   // Never persist the token or cache snapshot, or include either in diagnostics.
   const rewardSnapshots=new WeakMap();
   const selectionToken=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
