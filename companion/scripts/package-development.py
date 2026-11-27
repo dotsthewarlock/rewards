@@ -41,7 +41,7 @@ commit=git("rev-parse","HEAD").decode().strip()
 prefix=f"rewards-companion-{version}-dev-{commit[:12]}"
 asset_names={"extension":prefix+"-extension.zip","bookmarklet":prefix+"-bookmarklet.txt","source":prefix+"-bookmarklet.js"}
 assert manifest["version_name"]==f"{version} development candidate"
-assert all(not name.startswith("sandbox/") and name not in {"prototype.html","sandbox.html","core/model.js","core/monitor-plan.js","core/contracts.js","core/presentation.js","ui/app.js"} for name in files)
+assert all(not name.startswith("sandbox/") and name not in {"prototype.html","sandbox.html","core/model.js","core/contracts.js","core/presentation.js","ui/app.js"} for name in files)
 data=archive()
 assert data==archive(),"archive not deterministic"
 for directory in (out,extracted):
