@@ -1,12 +1,13 @@
-# Development cycle records
+# Development records — compact handoff contract
+Historical evidence, not current policy. AGENTS.md and companion/README.md govern. Git diff is change detail; CI is test detail. One record per meaningful cycle/checkpoint, material decision or session handoff; no transcript, daily diary, repeated roadmap or routine micro-iteration. Prefer ~150–350 words (more only if material evidence warrants); link rather than copy. Never include credentials, raw private diagnostics or personal data.
 
-Purpose: durable, AI-readable architect/developer handoffs and engineering audit trail. These records are historical evidence, not a competing roadmap or authority.
+## Record format
+- Base → implementation SHA (branch); relevant diff paths/symbols; milestone/scope completed vs remaining.
+- Evidence: command/environment as needed, CI link, actual pass/fail/blocked/not run, important limitations. Distinguish synthetic/native/live. Link fixture provenance if changed.
+- Material decisions/assumptions only: choice + why/alternative or trade-off + affected contract + evidence/confidence + unresolved risk/revisit trigger. Include meaningful prevention vs recovery choices, compatibility/UX deviations and authorization boundaries. No inference that an assumption is approved.
+- Next: highest-priority action; real blockers, minimum user action if required, release/rollback status if changed. Update current README only for current status/priority changes.
+- Architect review: compare from last reviewed SHA, inspect affected risk/contract boundaries and actual evidence; record brief verified/needs correction/deferred outcome, rationale, next focus. Change AGENTS/README/contract only where decision or current status changes. If nothing material changed, a short review note or commit reference suffices; no approval gate. Preserve historical records; append or correct transparently.
 
-- One concise Markdown record per meaningful engineering cycle, material decision or release checkpoint; use YYYY-MM-DD_Vx.y_topic.md (append a sequence only if needed).
-- Record implementation commit/branch, scope, significant decisions and trade-offs, tests with actual outcomes and CI links, unverified assumptions, blockers, next action, and release/rollback status as applicable.
-- Keep AGENTS.md canonical for instructions and companion/README.md canonical for current state. Link to records rather than duplicating their contents. Git history and CI logs supply detailed diffs/test output.
-- Do not record routine micro-iterations, verbose transcripts, raw diagnostic exports, real credentials or personal data. Correct factual errors transparently; do not rewrite historical results to imply later acceptance.
-- Records are not routine approval gates. Keep internal engineering autonomous; request only genuinely required user intervention or separate authorization.
-
-## Index
-- [2026-11-27 — V0.2 shared-core convergence](2026-11-27_V0.2_shared-core.md): verified read-only shared workspace and bookmarklet build; actual redemption convergence still pending.
+## Records
+- [V0.2 shared-core checkpoint (2026-11-27)](2026-11-27_V0.2_shared-core.md): read-only shared workspace/build and verified limitations.
+- [Authority reconciliation (2026-11-27)](2026-11-27_authority.md): one-time architect source audit, compact review contract.
