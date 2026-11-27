@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
+from urllib.parse import quote
 
 spec=importlib.util.spec_from_file_location("publication",Path(__file__).resolve().parents[1]/"launcher/tools/publication.py")
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
@@ -23,10 +24,20 @@ def archive(files):
         for key,value in files.items():z.writestr(key,value)
     return buf.getvalue()
 def fixture():
-    build={"schema":"rewards.development-package/2","channel":"development","status":"development-only; not live accepted","commit":COMMIT,"version":"0.6.1","assets":ASSETS}
+    build={"schema":"rewards.development-package/2","channel":"development","status":"development-only; not live accepted","commit":COMMIT,"version":"0.6.1","rollbackBaseline":m.BASELINE,"assets":ASSETS}
+    source=b"window.fixture=true;"
+    manifest={"manifest_version":3,"version":"0.6.1","version_name":"0.6.1 development candidate",
+              "background":{"service_worker":"background.js"},"side_panel":{"default_path":"index.html"},
+              "icons":{"16":"icons/icon16.png"},"action":{"default_icon":{"16":"icons/icon16.png"}},
+              "content_scripts":[{"js":["discovery/content.js"]}]}
+    runtime={"background.js","index.html","icons/icon16.png","discovery/content.js",
+             "core/campaigns.js","core/codec.js","core/public-catalog.js","ui/components.js","ui/workspace.js",
+             "ui/views/workspace-queue.js","ui/views/workspace-rewards.js","ui/views/workspace-campaigns.js",
+             "ui/views/workspace-settings.js","ui/live.js","ui/tokens.css","ui/components.css"}
+    ext={n:b"fixture" for n in runtime};ext["manifest.json"]=m.json_bytes(manifest)
     files={"build.json":m.json_bytes(build),"install.html":b"fixture","native-acceptance.md":b"fixture",
-           ASSETS["bookmarklet"]:b"javascript:fixture",ASSETS["source"]:b"window.fixture=true;",
-           ASSETS["extension"]:archive({"manifest.json":b'{"manifest_version":3,"version":"0.6.1","version_name":"development"}'})}
+           ASSETS["bookmarklet"]:("javascript:"+quote(source.decode(),safe="")+"\n").encode(),ASSETS["source"]:source,
+           ASSETS["extension"]:archive(ext)}
     files["SHA256SUMS.txt"]="".join(m.digest(v)+"  "+k+"\n" for k,v in files.items()).encode()
     data=archive(files)
     run={"id":RUN,"head_sha":COMMIT,"head_branch":"companion-dev","event":"push","status":"completed","conclusion":"success","path":".github/workflows/companion-browser.yml","repository":{"full_name":m.REPO},"head_repository":{"full_name":m.REPO}}
@@ -51,6 +62,12 @@ class PublicationTests(unittest.TestCase):
             blob=archive(changed)
             with self.assertRaises(ValueError):m.unpack(blob,COMMIT,m.digest(blob))
         with self.assertRaises(ValueError):m.verify_entry({**c,"path":"companion/launcher/releases/../../../secret"},"dev")
+        with self.assertRaises(ValueError):m.verify_entry({**c,"package":""},"dev")
+        for key,value in ((ASSETS["bookmarklet"],b"javascript:wrong\n"),("build.json",m.json_bytes({**m.load(files["build.json"]),"rollbackBaseline":"wrong"}))):
+            changed={**files,key:value}
+            changed["SHA256SUMS.txt"]="".join(m.digest(v)+"  "+k+"\n" for k,v in changed.items() if k!="SHA256SUMS.txt").encode()
+            blob=archive(changed)
+            with self.assertRaises(ValueError):m.unpack(blob,COMMIT,m.digest(blob))
     def test_two_phase(self):
         data,run,art,_=fixture()
         old={"version":"0.6.0-dev-"+"b"*12,"path":"companion/launcher/releases/0.6.0-dev-"+"b"*12+".js","sha256":"0"*64}
@@ -60,10 +77,11 @@ class PublicationTests(unittest.TestCase):
         real_stable=Path(__file__).resolve().parents[2]/stable["path"]
         with tempfile.TemporaryDirectory() as folder:
             repo=Path(folder)
-            (repo/stable["path"]).parent.mkdir(parents=True)
-            (repo/stable["path"]).write_bytes(real_stable.read_bytes())
+            for path in m.FROZEN:
+                dest=repo/path;dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_bytes((Path(__file__).resolve().parents[2]/path).read_bytes())
             target=repo/(m.BASE+"channels.json")
-            target.parent.mkdir(parents=True)
+            target.parent.mkdir(parents=True,exist_ok=True)
             (target.parent/"releases").mkdir()
             target.write_bytes(m.json_bytes(current))
             def api(path):
@@ -83,7 +101,7 @@ class PublicationTests(unittest.TestCase):
                 with patch.object(m,"hosted"):
                     with self.assertRaises(ValueError):m.activate(activate)
                 target.write_bytes(m.json_bytes(current))
-                with patch.object(m,"hosted") as hosted:m.activate(activate);self.assertEqual(hosted.call_count,2)
+                with patch.object(m,"hosted") as hosted:m.activate(activate);self.assertEqual(hosted.call_count,len(m.FROZEN)+4)
                 self.assertEqual(m.load(target.read_bytes()),{**current,"dev":candidate})
                 self.assertEqual((repo/candidate["path"]).read_bytes(),source)
                 target.write_bytes(m.json_bytes({**current,"stable":{**stable,"sha256":"f"*64}}))
