@@ -32,7 +32,7 @@ with sync_playwright() as p:
     page=browser.new_page(viewport={"width":320,"height":480})
     page.set_default_timeout(10000)
     page.set_default_navigation_timeout(10000)
-    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview explicit Open","change then cancel preserves preference","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular explicit Open","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation"])
+    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview explicit Open","change then cancel preserves preference","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular explicit Open","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices"])
     scenario_count=0
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
     def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False,retain=False,stored=None,blocked=False):
@@ -181,8 +181,9 @@ with sync_playwright() as p:
     button("Cancel").click();gone();assert pref()==json.loads(remembered_dev);check(0)
     changed={**manifest,"dev":{**manifest["dev"],"version":"0.6.0-dev-abcdef012345","path":base+"releases/0.6.0-dev-abcdef012345.js"}}
     setup(m=changed,retain=True);preview_ready()
-    assert "different Preview build" in page.get_by_role("status").inner_text()
+    assert "different Preview version" in page.get_by_role("status").inner_text()
     assert page.get_by_text(changed["dev"]["version"],exact=False).is_visible()
+    assert page.get_by_text("Previously selected: "+manifest["dev"]["version"],exact=False).is_visible()
     assert pref()==json.loads(remembered_dev);check(0);button("Open Preview · 0.6.0").click();gone();check(1)
     assert pref()["version"]==changed["dev"]["version"]
     setup(m={"schema":1,"stable":stable},retain=True);ready()
@@ -195,6 +196,7 @@ with sync_playwright() as p:
     button("Open Preview · 0.6.0").click();gone();check(1)
     setup(stored=remembered_dev,body="window.launches=99");preview_ready()
     button("Open Preview · 0.6.0").click();button("Retry").wait_for();check(0)
+    assert button("Open Preview · 0.6.0").is_disabled() and button("Change version").is_disabled()
     assert pref()==json.loads(remembered_dev);button("Cancel").click();gone()
     setup(stored=remembered_dev,m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}})
     preview_ready();assert not page.get_by_text("More testing options").is_visible()
@@ -218,9 +220,25 @@ with sync_playwright() as p:
     page.evaluate("window.fail=false");button("Retry").click();gone();check(1)
     assert page.evaluate("calls").count(root+base+"channels.json")==2
     setup(retain=True);preview_ready();button("Cancel").click();gone()
-    isolated=browser.new_page();isolated.route("**/*",lambda route:route.fulfill(content_type="text/html",body="<p>Other origin</p>") if route.request.url=="https://other.invalid/" else route.abort())
+    isolated=page.context.new_page();isolated.route("**/*",lambda route:route.fulfill(content_type="text/html",body="<p>Other origin</p>") if route.request.url=="https://other.invalid/" else route.abort())
     isolated.goto("https://other.invalid/");assert isolated.evaluate("(key)=>localStorage.getItem(key)",key) is None;isolated.close()
-    assert scenario_count==42 and next(scenarios,None) is None
+    replacement="window.launches += 1; // different bytes"
+    hash_changed={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(replacement.encode()).hexdigest()}}
+    setup(stored=remembered_dev,m=hash_changed,body=replacement);preview_ready()
+    assert page.get_by_text("Source fingerprint changed.",exact=False).is_visible();check(0)
+    assert pref()==json.loads(remembered_dev)
+    button("Open Preview · 0.6.0").click();gone();check(1)
+    assert pref()["sha256"]==hash_changed["dev"]["sha256"]
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    page.evaluate("window.manifestFail=true;window.fail=false")
+    button("Retry").click();page.get_by_text("Could not find available versions. Nothing opened.",exact=True).wait_for()
+    assert button("Open Preview · 0.6.0").is_disabled()
+    assert button("Open Regular · v15").is_disabled();check(0)
+    assert pref()==json.loads(remembered_dev)
+    page.evaluate("window.manifestFail=false")
+    button("Retry").click();gone();check(1)
+    assert page.evaluate("calls").count(root+base+"channels.json")==3
+    assert scenario_count==44 and next(scenarios,None) is None
     # Distribution page is read-only; all requests remain synthetic.
     print("Distribution page: current, missing, invalid, offline and retry",flush=True)
     distribution=browser.new_page(viewport={"width":320,"height":480})
@@ -279,4 +297,4 @@ with sync_playwright() as p:
     print("Homepage discoverability PASS",flush=True)
     browser.close()
 faulthandler.cancel_dump_traceback_later()
-print("42 synthetic scenario executions PASS",flush=True)
+print("44 synthetic scenario executions PASS",flush=True)

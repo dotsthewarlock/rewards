@@ -29,7 +29,7 @@
   const dialog = document.createElement('dialog');
   const add = (tag,text,cls,parent=dialog) => {const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;parent.append(el);return el;};
   const title=add('h2','Rewards Companion');title.id='loader-title';dialog.setAttribute('aria-labelledby',title.id);
-  const description=add('p','Regular may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
+  const description=add('p','Regular is recommended and may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
   const stable=add('button','Open Regular','stable'),dev=add('button','Open Preview','dev');
   const meta=add('p','For testing only. Do not use for real claims.','meta');meta.id='loader-dev';dev.setAttribute('aria-describedby',meta.id);
   const remembered=add('p','Your choice is remembered on this site when possible.','meta');
@@ -62,11 +62,11 @@
     const raw=localStorage.getItem(preferenceKey);
     if(raw&&raw.length<=256){
       const p=JSON.parse(raw);
-      if(p?.schema===1&&Object.keys(p).length===4&&/^[a-f0-9]{64}$/.test(p.sha256)&&
+      if(p?.schema===1&&Object.keys(p).length===4&&typeof p.sha256==='string'&&/^[a-f0-9]{64}$/.test(p.sha256)&&
          ((p.channel==='stable'&&p.version==='15')||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))preference=p;
     }
   }catch{}
-  const remember=(grade,c)=>{if(grade==='test')return;try{localStorage.setItem(preferenceKey,JSON.stringify(identity(grade,c)));}catch{}};
+  const remember=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
   const eligible=(value,grade)=>grade==='stable'?stableOK(value?.stable):grade==='dev'?candidate(value?.dev,'dev'):testOK(value?.test);
   const get=async(path,controller)=>{
     const url=new URL(path,ROOT);
@@ -79,10 +79,13 @@
     const compact=!showingChoices&&!!preferred;
     stable.hidden=compact&&preferred!=='stable';dev.hidden=compact&&preferred!=='dev';meta.hidden=dev.hidden;
     dev.className=compact&&preferred==='dev'?'stable':'dev';
-    change.hidden=!compact;change.disabled=!!current;
-    stable.disabled=!!current||!stableOK(manifest?.stable);
-    dev.disabled=!!current||!candidate(manifest?.dev,'dev');
-    test.disabled=!!current||!testOK(manifest?.test);more.hidden=compact||!testOK(manifest?.test);
+    change.hidden=!compact;
+    // After a failure, Retry must recheck the manifest; direct Open cannot bypass it.
+    const blocked=!!current||!retry.hidden;
+    change.disabled=blocked;
+    stable.disabled=blocked||!stableOK(manifest?.stable);
+    dev.disabled=blocked||!candidate(manifest?.dev,'dev');
+    test.disabled=blocked||!testOK(manifest?.test);more.hidden=compact||!testOK(manifest?.test);
     remembered.textContent=compact?'Your preferred version on this site.':'Your choice is remembered on this site when possible.';
   };
   const focusChoice=()=>{if(!stable.hidden&&!stable.disabled)stable.focus();else if(!dev.hidden&&!dev.disabled)dev.focus();else cancel.focus();};
@@ -96,7 +99,8 @@
     if(preference&&!eligible(value,preference.channel)){
       showingChoices=true;status.textContent='Your preferred version is unavailable. Choose another version.';
     }else if(preference&&!same(preference,value[preference.channel])){
-      showingChoices=false;status.textContent='A different '+(preference.channel==='dev'?'Preview':'Regular')+' build is available. Check the version details before opening.';
+      showingChoices=false;status.textContent='A different '+(preference.channel==='dev'?'Preview':'Regular')+' version is available. Check the version details before opening.';
+      versions.textContent+=' · Previously selected: '+preference.version+(preference.version===value[preference.channel].version?' · Source fingerprint changed. Previous: '+preference.sha256+' · Available: '+value[preference.channel].sha256:'');
       help.open=true;
     }else{
       showingChoices=!preference;status.textContent=preference?'Open your preferred version or change it.':'Choose a version.';
