@@ -98,17 +98,7 @@ async function readCatalog(){
 let catalogFlight=null;
 function refreshCatalog(){
   if(catalogFlight)return catalogFlight;
-  catalogFlight=(async()=>{
-    const prior=await readCatalog();
-    if(!prior)return {ok:false,reason:'catalog-storage-invalid'};
-    if(prior.outcome==='restricted')return {ok:true,catalog:prior};
-    const result=await C.retrieve();
-    const next=C.merge(prior,result.ids,result.outcome,new Date().toISOString());
-    if(!next)return {ok:false,reason:'catalog-retention-blocked'};
-    await chrome.storage.local.set({[catalogKey]:next});
-    const checked=await readCatalog();
-    return JSON.stringify(checked)===JSON.stringify(next)?{ok:true,catalog:checked}:{ok:false,reason:'catalog-storage-unverified'};
-  })().finally(()=>{catalogFlight=null;});
+  catalogFlight=C.refreshStored(readCatalog,value=>chrome.storage.local.set({[catalogKey]:value})).finally(()=>{catalogFlight=null;});
   return catalogFlight;
 }
 async function handle(m,sender){

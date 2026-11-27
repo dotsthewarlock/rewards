@@ -46,7 +46,7 @@ async function loadCatalog(refreshPublic=false){
  catalogBusy=true;catalogError=false;render();
  try{
    const result=await request(refreshPublic?'refreshCatalog':'getCatalog');
-   if(result?.ok)catalog=result.catalog;else catalogError=true;
+   if(result?.ok)catalog=result.catalog;else {catalogError=true;const saved=await request('getCatalog');if(saved?.ok)catalog=saved.catalog;}
  }catch{catalogError=true;}
  catalogBusy=false;
  if(alive()&&screen==='campaigns'){
@@ -61,10 +61,12 @@ function catalogView(){
  if(!recording)return '<p>Public directory refresh requires the extension.</p>';
  const c=catalog;
  const restricted=c?.outcome==='restricted';
- const current=c?.outcome==='verified-directory'&&Date.now()-Date.parse(c.checkedAt)<=86400000;
+ const rateLimited=c?.outcome==='rate-limited',interrupted=c?.outcome==='checking';
+ const age=Date.now()-Date.parse(c?.checkedAt);
+ const current=!catalogBusy&&!catalogError&&c?.outcome==='verified-directory'&&age>=0&&age<=86400000;
  return '<section class="surface stack"><h3>Canadian public catalog</h3><p>Manual directory check only. No claims, verified terms or stock inferred.</p>'+
- button('Refresh public directory','refreshCatalog',{disabled:catalogBusy||restricted})+
- '<p role="status">'+esc(catalogBusy?'Checking…':catalogError?'Catalog unavailable; prior evidence retained.':restricted?'Access restricted. Further checks stopped.':c?.checkedAt?(current?'Directory checked ':'Stale or unavailable · last check ')+c.checkedAt:'Not yet checked')+'</p>'+
+ button('Refresh public directory','refreshCatalog',{disabled:catalogBusy||restricted||rateLimited||interrupted})+
+ '<p role="status">'+esc(catalogBusy?'Checking…':catalogError?'Catalog unavailable; prior evidence retained.':restricted?'Access restricted. Further checks stopped.':rateLimited?'Rate limited. Further checks stopped.':interrupted?'Previous check interrupted or unverified. Further checks stopped.':c?.checkedAt?(current?'Directory checked ':'Stale or unavailable · last check ')+c.checkedAt:'Not yet checked')+'</p>'+
  (c?.entries?.length?'<ul class="list">'+c.entries.map(e=>'<li><strong>'+esc(e.campaign)+'</strong><p>'+esc(current&&e.listed?'Listed at last check':'Previously seen · stale')+' · Terms, availability and workflow compatibility unknown</p><p>Last seen: '+esc(e.lastSeen)+'</p></li>').join('')+'</ul>':'<p>No observed identities stored.</p>')+
  '<a href="https://getmybonus.ca/" target="_blank" rel="noopener noreferrer">Official directory</a></section>';
 }

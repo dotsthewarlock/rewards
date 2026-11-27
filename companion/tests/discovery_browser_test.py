@@ -97,7 +97,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
                 catalogFetchCalls++;
                 const html='<h2>Select the qualifying offer to claim your bonus eGift card</h2>'+
                   ['CA1126WG1','CA1126WXB','CA1126VANW','CA1226WUDC','CA1226WGT','CA1226WG1'].map(s=>'<a href="/'+s+'/en">PRIVATE_FIXTURE</a>').join('');
-                const r=new Response(catalogMode==='ok'?html:'Access denied',{status:catalogMode==='restricted'?403:200,headers:{'content-type':'text/html'}});
+                const r=new Response(catalogMode==='ok'?html:catalogMode==='restricted'?html+'<p>Access denied</p>':'<p>Temporary error</p>',{status:200,headers:{'content-type':'text/html'}});
                 Object.defineProperty(r,'url',{value:url});return r;
               };}""")
             panel.locator('[data-action="navigate"][data-value="campaigns"]').click()
@@ -111,6 +111,13 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert "TEST_SECRET_CARD" not in json.dumps(catalog)
             assert worker.evaluate("catalogFetchCalls")==1
             assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+            worker.evaluate("catalogMode='unavailable'")
+            panel.get_by_role("button",name="Refresh public directory").click()
+            expect(panel.locator("main")).to_contain_text("Previously seen · stale")
+            expect(panel.locator("main")).not_to_contain_text("Listed at last check")
+            failed=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'getCatalog'})")["catalog"]
+            assert failed["outcome"]=="unavailable" and len(failed["entries"])==6
+            assert all(not e["listed"] for e in failed["entries"])
             worker.evaluate("catalogMode='restricted'")
             panel.get_by_role("button",name="Refresh public directory").click()
             expect(panel.locator("main")).to_contain_text("Access restricted")
@@ -118,7 +125,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             stopped=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'refreshCatalog'})")["catalog"]
             assert stopped["outcome"]=="restricted" and len(stopped["entries"])==6
             assert all(not e["listed"] for e in stopped["entries"])
-            assert worker.evaluate("catalogFetchCalls")==2
+            assert worker.evaluate("catalogFetchCalls")==3
             assert worker.evaluate("async()=> (await chrome.storage.local.get('publicCampaignCatalogV1')).publicCampaignCatalogV1")==stopped
             assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
             print("M1 manual catalog transport, privacy, restricted stop and unchanged legacy state PASS",flush=True)
