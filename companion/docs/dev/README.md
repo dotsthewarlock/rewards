@@ -58,3 +58,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.6 candidate architect review](2026-11-27_V0.6_candidate-review.md): automated convergence accepted, native/live gates, later approved launcher-only publication reconciled.
 
 - [Script Loader L1–L3](2026-11-27_launcher-handoff.md) and [L2.1](2026-11-27_launcher-L2.1-handoff.md): actual gated Dev publication, immutable V0.6 package, hosted verification and rollback. Current policy in release.md; one native checklist.
+
+- [V0.6 functional correction module acceptance (2026-11-27)](2026-11-27_V0.6_functional-correction.md): synthetic workflow and D3 identity acceptance; Master integration/publication dependency and native gates.
