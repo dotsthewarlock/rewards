@@ -16,7 +16,7 @@
   function validReview(r){
     return !!r&&D.allowedOrigin(r.origin)&&D.origins[r.origin]===r.campaign&&uuid(r.documentToken)&&uuid(r.attemptId)&&
       bounded(r.queueId,128)&&L.barcode(r.code)&&bounded(r.product)&&bounded(r.reward)&&bounded(r.cardMerchant)&&money(r.valueRecent)&&
-      L.normalizedEmail(r.email)===r.email&&r.terms===true;
+      typeof r.email==='string'&&L.normalizedEmail(r.email)===r.email&&r.terms===true;
   }
   function exactReview(r){
     const {origin,campaign,documentToken,attemptId,queueId,code,product,reward,cardMerchant,valueRecent,email,terms}=r;
@@ -56,7 +56,7 @@
         const matches=queue.filter(row=>row.id===r.queueId);
         if(matches.length!==1||matches[0].code!==r.code||matches[0].state!=='queued'||raw.email!==r.email)return fail('review-changed');
         if(history.length>=999||gifts.length>=999)return fail('capacity');
-        if(await L.historyMatcher(history)(r.code))return fail('duplicate');
+        if(gifts.some(row=>row.sourceRedemptionCode===r.code)||await L.historyMatcher(history)(r.code))return fail('duplicate');
         if(queue.some(row=>row.id!==r.queueId&&row.code===r.code&&!['error','duplicate'].includes(row.state)))return fail('duplicate');
         if(!current(storage,r.campaign,raw,contextValid,r))return fail('context-changed');
         const ts=Date.now();
@@ -90,6 +90,7 @@
   async function reconcileSuccess(storage,locks,target,attemptId,card,contextValid){
     if(!target||!D.allowedOrigin(target.origin)||D.origins[target.origin]!==target.campaign||!uuid(target.documentToken)||!uuid(attemptId)||typeof contextValid!=='function')return fail('invalid-target');
     const t=Object.freeze({origin:target.origin,campaign:target.campaign,documentToken:target.documentToken,attemptId});
+    const observed=Object.freeze({cardMerchant:card?.cardMerchant,valueRecent:card?.valueRecent,gcNumber:card?.gcNumber,gcPin:card?.gcPin,sourceRedemptionCode:card?.sourceRedemptionCode});
     return owned(locks,async()=>{
       let attempted=false;
       try{
@@ -97,25 +98,24 @@
         const {raw,queue,history,gifts}=cache(storage,t.campaign);
         const r=activeAttempt(raw);
         if(!r||r.attemptId!==attemptId||r.origin!==t.origin||r.campaign!==t.campaign||occupied(raw.lock))return fail('unresolved');
-        if(!validCard(card,r))return fail('reward-mismatch');
+        if(!validCard(observed,r))return fail('reward-mismatch');
         const matches=queue.filter(row=>row.id===r.queueId);
         if(matches.length!==1||matches[0].code!==r.code||!['pending','complete'].includes(matches[0].state)||
           queue.some(row=>row.id!==r.queueId&&['pending','processing'].includes(row.state)))return fail('queue-conflict');
-        const k=giftKey(card),sameGift=gifts.filter(row=>giftKey(row)===k),sameSource=gifts.filter(row=>row.sourceRedemptionCode===r.code);
+        const k=giftKey(observed),sameGift=gifts.filter(row=>giftKey(row)===k),sameSource=gifts.filter(row=>row.sourceRedemptionCode===r.code);
+        if(gifts.some(row=>row.key===k&&giftKey(row)!==k))return fail('reward-conflict');
         if(sameGift.length>1||sameSource.length>1||sameGift.some(row=>!validCard(row,r)||(row.key&&row.key!==k)||row.slug!==r.campaign)||sameSource.some(row=>giftKey(row)!==k))return fail('reward-conflict');
-        const matchedHistory=[];
-        for(const row of history)if(await L.historyMatcher([row])(r.code))matchedHistory.push(row);
+        const {hash,rows:matchedHistory}=await L.historyMatches(history,r.code);
         if(matchedHistory.length>1||matchedHistory.some(row=>row.giftKey!==k||(row.code&&row.code!==r.code)))return fail('history-conflict');
         if(matches[0].state==='complete'&&(!sameGift.length||!matchedHistory.length))return fail('queue-conflict');
         if((!sameGift.length&&gifts.length>=999)||(!matchedHistory.length&&history.length>=999))return fail('capacity');
-        const hash=matchedHistory.length?null:await L.historyHash(r.code);
-        if(!current(storage,t.campaign,raw,contextValid,t))return fail('context-changed');
+         if(!current(storage,t.campaign,raw,contextValid,t))return fail('context-changed');
         const ts=Date.now();
         const write=(name,value)=>{
           if(!current(storage,t.campaign,raw,contextValid,t))throw Error('context-changed');
           attempted=true;save(storage,t.campaign,raw,name,value);
         };
-        if(!sameGift.length)write('giftcards',[...gifts,{key:k,cardMerchant:norm(card.cardMerchant),valueRecent:card.valueRecent,gcNumber:norm(card.gcNumber),gcPin:norm(card.gcPin),sourceRedemptionCode:r.code,slug:r.campaign,ts}]);
+        if(!sameGift.length)write('giftcards',[...gifts,{key:k,cardMerchant:norm(observed.cardMerchant),valueRecent:observed.valueRecent,gcNumber:norm(observed.gcNumber),gcPin:norm(observed.gcPin),sourceRedemptionCode:r.code,slug:r.campaign,ts}]);
         if(!matchedHistory.length)write('history',[...history,{h:hash,code:r.code,last4:r.code.slice(-4),ts,giftKey:k}]);
         if(matches[0].state!=='complete')write('queue',queue.map(row=>row.id===r.queueId?{...row,state:'complete',note:'Verified reward captured',updated:ts}:row));
         write('active',null);

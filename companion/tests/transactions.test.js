@@ -82,3 +82,21 @@ test('credential/source or history linkage conflict cannot overwrite captured re
  s.map.delete(key('giftcards'));s.map.set(key('history'),JSON.stringify([{code,giftKey:'different'}]));
  assert.equal((await reconcile(s)).reason,'history-conflict');assert.equal(read(s,'history')[0].giftKey,'different');
 });
+
+test('null email and an existing linked reward independently block new submission',async()=>{
+ const s=store();s.map.delete(key('email'));
+ assert.equal((await start(s,()=>{throw Error('must not invoke')},()=>true,{...review,email:null})).reason,'invalid-review');
+ const duplicate=store();duplicate.map.set(key('giftcards'),JSON.stringify([{...card,slug}]));
+ assert.equal((await start(duplicate,()=>{throw Error('must not invoke')})).reason,'duplicate');
+ assert.equal(duplicate.getItem(key('active')),null);
+});
+test('capture snapshots observed credentials before async ownership and rejects inconsistent stored keys',async()=>{
+ const s=store();await start(s);
+ const mutable={...card};
+ const changingLock={request:async(n,o,f)=>{mutable.gcPin='9999';return f({});}};
+ assert.deepEqual(await T.reconcileSuccess(s,changingLock,target,review.attemptId,mutable,()=>true),{ok:true,status:'complete'});
+ assert.equal(read(s,'giftcards')[0].gcPin,'0000');
+ const conflict=store();await start(conflict);
+ conflict.map.set(key('giftcards'),JSON.stringify([{...card,gcPin:'9999',key:'000012345678|0000',sourceRedemptionCode:other,slug}]));
+ assert.equal((await reconcile(conflict)).reason,'reward-conflict');
+});

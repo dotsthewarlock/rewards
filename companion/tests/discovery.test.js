@@ -131,3 +131,9 @@ test('edit rechecks stale cache and never reports success after storage failure 
  const wrong=editableStore();wrong.setItem=()=>{};
  assert.equal((await L.editCache(wrong,testLock,slug,'saveClipboard',true,()=>true)).reason,'edit-outcome-unknown');
 });
+
+test('email preference validation matches the v15 redemption validator',()=>{
+ assert.equal(L.validEdit('saveEmail','fixture@example'),false);
+ assert.equal(L.validEdit('saveEmail','fixture@example.invalid'),true);
+ assert.equal(L.validEdit('saveEmail',null),false);
+});

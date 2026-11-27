@@ -41,7 +41,8 @@
         }
         fields[field]=value;
       }
-      const context=root.closest('.redemption-form')||id.root;
+      const form=root.closest('.redemption-form');
+      const context=form&&id.root.contains(form)?form:id.root;
       const matches=[...visibleText(context).matchAll(/\bEligible\s+Card\s*:\s*(\d{30})\b/gi)].map(m=>m[1]);
       if(matches.length!==1||matches[0]!==expectedCode)return fail('eligible-card-mismatch');
       const product=visibleText(root.querySelector('.h5'));

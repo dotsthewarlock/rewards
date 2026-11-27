@@ -100,6 +100,10 @@
     }catch{}
     return legacyFallback(code);
   }
+  async function historyMatches(history,code){
+    const hash=await historyHash(code),fallback=legacyFallback(code);
+    return {hash,rows:history.filter(row=>row.code===code||row.h===hash||row.h===fallback)};
+  }
   function historyMatcher(history){
     const codes=new Set(history.filter(r=>barcode(r.code)).map(r=>r.code));
     const hashes=new Set(history.filter(r=>typeof r.h==='string').map(r=>r.h));
@@ -206,5 +210,5 @@
     if(op==='importQueue')return validatePreview(input);
     return input?.ok===true&&Object.keys(input).length===1?{ok:true}:null;
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit,key,barcode,validSlug,decodeRows,readSnapshot,unchanged,checkedWrite,historyHash,historyMatcher,normalizedEmail});
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit,key,barcode,validSlug,decodeRows,readSnapshot,unchanged,checkedWrite,historyHash,historyMatcher,historyMatches,normalizedEmail});
 })();
