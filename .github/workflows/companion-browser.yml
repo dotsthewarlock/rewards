@@ -24,3 +24,6 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python companion/tests/browser_test.py
       - run: python companion/tests/discovery_browser_test.py
+
+      - run: npm run build:bookmarklet --prefix companion
+      - run: python companion/tests/bookmarklet_browser_test.py
