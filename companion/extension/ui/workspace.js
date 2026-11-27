@@ -1,6 +1,10 @@
 import {csv,tsv} from '../core/codec.js';
 import {campaignById} from '../core/campaigns.js';
-import {esc,button,check} from './components.js';
+import {esc,button} from './components.js';
+import {workspaceQueueView} from './views/workspace-queue.js';
+import {workspaceRewardsView} from './views/workspace-rewards.js';
+import {workspaceCampaignsView} from './views/workspace-campaigns.js';
+import {workspaceSettingsView} from './views/workspace-settings.js';
 import '../core/workspace-contract.js';
 // Platform-neutral workspace. The transport owns identity, persistence and authorization.
 export function mountWorkspace(root,request,{recording=true}={}){
@@ -20,27 +24,10 @@ const editMessage={
  'edit-outcome-unknown':'Save outcome uncertain. Refresh and inspect the cache before retrying.'
 };
 const {sameTarget}=globalThis.RewardsWorkspaceContract;
-const stateLabel={queued:'Ready',processing:'Processing',pending:'Pending',complete:'Complete',error:'Error',duplicate:'Duplicate',other:'Unknown'};
-function maskedList(rows,index,action,history=false,rewards=false){
- const total=Math.max(1,Math.ceil(rows.length/25)),current=Math.min(index,total-1);
- const items=rows.slice(current*25,current*25+25).map(r=>{
-   const revealed=rewards&&revealedReward?.index===r.index;
-   return '<li class="row spread"><span class="mono">'+(r.last4===null?'Unavailable':'•••• '+esc(r.last4))+'</span>'+
-     (rewards?'<span>'+(r.value===null?'Value unavailable':'CAD $'+esc(r.value))+'</span>'+button(revealed?'Hide':'Reveal','toggleReward',{extra:'data-value="'+r.index+'" aria-label="'+(revealed?'Hide':'Reveal')+' reward '+(r.index+1)+'" aria-expanded="'+!!revealed+'"'})+
-       (revealed?'<div class="full stack"><span>Merchant: '+esc(revealedReward.merchant)+'</span><span class="mono">Card: '+esc(revealedReward.number)+'</span><span class="mono">PIN: '+esc(revealedReward.pin)+'</span></div>':'')
-       :history?'':'<span>'+esc(stateLabel[r.state])+'</span>')+'</li>';
- }).join('');
- return '<ul class="list">'+items+'</ul>'+(total>1?'<div class="row spread">'+button('Previous',action,{disabled:current===0,extra:'data-value="'+(current-1)+'"'})+'<span>'+(current+1)+'/'+total+'</span>'+button('Next',action,{disabled:current===total-1,extra:'data-value="'+(current+1)+'"'})+'</div>':'');
-}
 const alive=()=>!root.host||root.host.isConnected;
 function discardReview(){
  const old=reviewed;reviewed=null;
  if(old)Promise.resolve(request('cancelFinal',{target:old.target,attemptId:old.review.attemptId})).catch(()=>{});
-}
-function finalReviewView(){
- if(!reviewed)return '';
- const r=reviewed.review;
- return '<section class="surface stack review-data"><h3>Review exact claim</h3><p><strong>Product:</strong> '+esc(r.product)+'</p><p><strong>Reward:</strong> '+esc(r.reward)+' · CAD $'+esc(r.valueRecent)+'</p><p><strong>Barcode:</strong> <span class="mono">'+esc(r.code)+'</span></p><p><strong>Email:</strong> '+esc(r.email)+'</p><p>Merchant terms are checked on the page. Confirm that you reviewed them and this is your eligible purchased product.</p>'+check('finalConfirmed','I confirm the exact claim details and merchant terms',reviewed.confirmed,editing)+button('Authorize reviewed claim','authorizeFinal',{primary:true,disabled:editing||!reviewed.confirmed,extra:'data-value="'+esc(r.attemptId)+'"'})+button('Cancel review','cancelFinal',{disabled:editing})+'</section>';
 }
 async function loadCatalog(refreshPublic=false){
  if(!recording||catalogBusy)return;
@@ -58,59 +45,18 @@ async function loadCatalog(refreshPublic=false){
    }
  }
 }
-function catalogView(){
- if(!recording)return '<p>Public directory refresh requires the extension.</p>';
- const c=catalog;
- const restricted=c?.outcome==='restricted';
- const rateLimited=c?.outcome==='rate-limited',interrupted=c?.outcome==='checking';
- const age=Date.now()-Date.parse(c?.checkedAt);
- const current=!catalogBusy&&!catalogError&&c?.outcome==='verified-directory'&&age>=0&&age<=86400000;
- return '<section class="surface stack"><h3>Canadian public catalog</h3><p>Manual directory check only. No claims, verified terms or stock inferred.</p>'+
- button('Refresh public directory','refreshCatalog',{disabled:catalogBusy||restricted||rateLimited||interrupted})+
- '<p role="status">'+esc(catalogBusy?'Checking…':catalogError?'Catalog unavailable; prior evidence retained.':restricted?'Access restricted. Further checks stopped.':rateLimited?'Rate limited. Further checks stopped.':interrupted?'Previous check interrupted or unverified. Further checks stopped.':c?.checkedAt?(current?'Directory checked ':'Stale or unavailable · last check ')+c.checkedAt:'Not yet checked')+'</p>'+
- (c?.entries?.length?'<ul class="list">'+c.entries.map(e=>'<li><strong>'+esc(e.campaign)+'</strong><p>'+esc(current&&e.listed?'Listed at last check':'Previously seen · stale')+' · Terms, availability and workflow compatibility unknown</p><p>Last seen: '+esc(e.lastSeen)+'</p></li>').join('')+'</ul>':'<p>No observed identities stored.</p>')+
- '<a href="https://getmybonus.ca/" target="_blank" rel="noopener noreferrer">Official directory</a></section>';
-}
 function render(){
  const focus=root.activeElement;
  const field=['importDraft','emailDraft','browseSearch'].includes(focus?.id)?focus.id:null;
  const selection=['importDraft','browseSearch'].includes(field)?[focus.selectionStart,focus.selectionEnd]:null;
  const action=focus?.dataset?.action,value=focus?.dataset?.value;
- const r=state?.report,summary=state?.summary,details=state?.details,cp=campaignById(r?.campaign);
+ const r=state?.report,cp=campaignById(r?.campaign);
  $('context').innerHTML='<section class="surface"><strong>'+esc(cp?.name||'No recognized campaign')+'</strong><p>'+esc(r? r.status+' · '+r.stage : state?.ok===false?'Connection unavailable':'Open a supported merchant tab')+'</p></section>';
  $('navigation').innerHTML=['queue','rewards','campaigns','settings'].map(x=>button(x[0].toUpperCase()+x.slice(1),'navigate',{extra:'data-value="'+x+'" '+(screen===x?'aria-current="page"':'')})).join('');
- let body='';
- if(screen==='queue'){
-   body='<h2>Queue</h2><p>Legacy cache management and reviewed foreground claims. Development candidate; live compatibility unverified.</p>';
-   if(summary?.ok)body+='<section class="surface"><p>'+summary.queue.queued+' ready · '+summary.queue.complete+' complete · '+summary.queue.pending+' pending</p><p>'+summary.queue.duplicate+' duplicates · '+summary.queue.error+' errors</p><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p>'+(summary.unresolved?'<p class="warning">Existing unresolved or active state. No replay or advancement.</p>':'')+'</section>';
-   else if(summary?.ok===false)body+='<p class="warning">Legacy cache could not be safely read. No data changed.</p>';
-   if(summary?.ok&&state?.target){
-     if(r?.stage==='entry'&&!summary.unresolved&&summary.queue.queued>0&&summary.emailConfigured&&cp?.products.length===1&&cp.rewards.length===1){
-       body+=reviewed?finalReviewView():'<section class="surface stack"><h3>Review merchant form</h3><p>Complete the native merchant steps and terms, leaving the final form visible. Do not submit separately. Unknown layouts and choices remain blocked.</p>'+button('Review final claim','prepareFinal',{primary:true,disabled:editing||r.controls.submit.actionable!==1})+'</section>';
-     }
-     if(r?.stage==='success'&&summary.unresolved&&state.recovery)body+='<section class="surface stack"><h3>Unresolved reward</h3><p>Reviewed attempt ending '+esc(state.recovery.last4)+'. Inspect the matching merchant confirmation before capture. No claim will be submitted or advanced.</p>'+button('Capture matching reward','reconcileSuccess',{primary:true,disabled:editing,extra:'data-value="'+esc(state.recovery.attemptId)+'"'})+'</section>';
-     body+='<section class="surface stack"><label for="importDraft">Redemption codes</label><textarea id="importDraft" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="Paste 30-digit codes or receipt text">'+esc(draft)+'</textarea>'+'<div class="row">'+button('Paste from clipboard','pasteDraft',{disabled:editing})+button('Add to queue','addQueue',{primary:true,disabled:editing||summary.unresolved||!draft.trim()})+button('Preview','previewImport',{disabled:editing||!draft.trim()})+'</div><p class="muted">Close other v15 workspaces before editing. Adding codes never submits a claim.</p><p id="importResult" role="status">'+(preview?esc(preview):'')+'</p></section>';
-     if(details?.ok)body+='<section class="surface"><h3>Existing queue</h3>'+(details.queue.length?maskedList(details.queue,page,'queuePage'):'<p>No queued records.</p>')+'</section>';
-   }
- }else if(screen==='rewards'){
-   body='<h2>Rewards</h2><p>'+(summary?.ok?summary.rewards+' legacy gift-card records · '+summary.history+' redemption history records':'No connected cache')+'</p><p>Reveal and export show private saved reward details. Reveal displays one current record for 30 seconds. Keep the workspace and exports private.</p>' + button('Download CSV','rewardCSV',{disabled:!summary?.rewards||!state?.target}) + button('Copy TSV','rewardTSV',{disabled:!summary?.rewards||!state?.target}) + '';
-   if(details?.ok){
-     const cards=browseTab==='cards',rows=cards?details.rewards.map((r,index)=>({...r,index})):details.history;
-     const filtered=rows.filter(r=>!browseSearch||r.last4?.toUpperCase().includes(browseSearch.toUpperCase()));
-     body+='<section class="surface stack"><div class="row" role="group" aria-label="Browse records">'+
-       button('Saved rewards','browseTab',{extra:'data-value="cards" aria-pressed="'+cards+'"',primary:cards})+
-       button('Redemption history','browseTab',{extra:'data-value="history" aria-pressed="'+!cards+'"',primary:!cards})+
-       '</div><label for="browseSearch">Find by ending digits or characters</label><input id="browseSearch" type="text" maxlength="4" autocomplete="off" value="'+esc(browseSearch)+'"><p role="status">'+filtered.length+' of '+rows.length+' records</p>'+
-       (filtered.length?maskedList(filtered,cards?rewardPage:historyPage,cards?'rewardPage':'historyPage',!cards,cards):'<p>No matching records.</p>')+'</section>';
-   }
- }else if(screen==='campaigns'){
-   body='<h2>Campaigns</h2>'+(cp?'<section class="surface"><strong>'+esc(cp.name)+'</strong><p>'+esc(cp.products.join(' / '))+'</p><p>'+esc(cp.rewards.join(' / '))+'</p><p>Published claim deadline: '+esc(cp.deadline)+'</p></section>':'<p>No recognized campaign metadata.</p>')+'<p>Recognition is structural evidence only, not verified eligibility or stock.</p>'+catalogView();
- }else{
-   body='<h2>Settings</h2>';
-   if(summary?.ok&&state?.target)body+='<section class="surface stack"><h3>Legacy preferences</h3><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p><label for="emailDraft">New redemption email</label><input id="emailDraft" type="email" maxlength="254" autocomplete="off" value="'+esc(emailDraft)+'">'+button('Save email','saveEmail',{disabled:editing||summary.unresolved||!emailDraft.trim()})+check('clipboardPreference','Saved clipboard preference',summary.clipboard,editing||summary.unresolved)+'<p class="muted">Preferences do not authorize claims. Keep legacy v15 closed while editing.</p></section>';
-   if(r?.controls)body+='<section class="surface stack"><h3>Current structural evidence</h3><p>Observed counts only; not proof of eligibility or compatibility.</p><ul class="list">'+[['Form','form'],['Barcode field','serial'],['Active step','activeStep'],['Submit controls','submit']].filter(([,key])=>r.controls[key]).map(([name,key])=>'<li><strong>'+esc(name)+'</strong><p>'+r.controls[key].present+' present · '+r.controls[key].visible+' visible · '+r.controls[key].actionable+' actionable</p></li>').join('')+'</ul></section>';
-   body+='<section class="surface stack"><h3>Diagnostics</h3>'+(recording?check('diagnosticsEnabled','Record sanitized structural observations',!!state?.diagnostics?.enabled)+'<p>'+(state?.diagnostics?.count||0)+'/500 distinct records · '+(state?.diagnostics?.eventCount||0)+'/2000 events</p>'+(state?.diagnostics?.blocked?'<p class="warning">Recording paused: retention limit or invalid existing records. Export valid records; existing storage is preserved.</p>':'') +button('Capture current evidence','captureDiagnostics',{disabled:!state?.target||!state?.diagnostics?.enabled||!!state?.diagnostics?.blocked})+'<p class="muted">No automatic deletion. Turning recording off retains earlier observations.</p>':'<p>Current document only. Background recording requires the extension.</p>')+button('Export diagnostics','export',{disabled:!state?.diagnostics?.count})+'<p>Read-only, scoped to recognized pages. No credentials, raw text or full URLs. Evidence is structural, not verified live eligibility.</p></section>';
- }
+ const body=screen==='queue'?workspaceQueueView({state,cp,draft,preview,page,editing,reviewed}):
+   screen==='rewards'?workspaceRewardsView({state,browseTab,browseSearch,rewardPage,historyPage,revealedReward}):
+   screen==='campaigns'?workspaceCampaignsView({cp,recording,catalog,catalogBusy,catalogError}):
+   workspaceSettingsView({state,emailDraft,editing,recording});
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
  if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
  else if(action){

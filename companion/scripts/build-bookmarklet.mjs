@@ -7,7 +7,7 @@ const read=p=>fs.readFileSync(path.join(base,p),'utf8');
 const classic=['core/identity.js','discovery/core.js','core/legacy.js','core/workspace-contract.js','core/registry.js','core/transactions.js','discovery/success.js','discovery/foreground.js'];
 // Explicit acyclic dependency order. Only the project's current named ESM syntax is supported.
 // Fail closed on unrecognized syntax; no runtime loader or remote executable dependency.
-const modules=['core/campaigns.js','core/codec.js','ui/components.js','ui/workspace.js'];
+const modules=['core/campaigns.js','core/codec.js','ui/components.js','ui/views/workspace-queue.js','ui/views/workspace-rewards.js','ui/views/workspace-campaigns.js','ui/views/workspace-settings.js','ui/workspace.js'];
 function flatten(name){
  const original=read('extension/'+name);
  const source=original.replace(/^import '\.\/registry\.js';\r?$/gm,'').replace(/^import '\.\.\/core\/workspace-contract\.js';\r?$/gm,'').replace(/^import \{[A-Za-z0-9_,\s]+\} from '\.[^'\n]+';\r?$/gm,'').replace(/^export (?=(?:async )?(?:const|function)\b)/gm,'');
