@@ -36,23 +36,36 @@ def archive():
             entry.external_attr=0o100644<<16
             z.writestr(entry,(src/name).read_bytes())
     return buf.getvalue()
+version=manifest["version"]
+commit=git("rev-parse","HEAD").decode().strip()
+prefix=f"rewards-companion-{version}-dev-{commit[:12]}"
+asset_names={"extension":prefix+"-extension.zip","bookmarklet":prefix+"-bookmarklet.txt","source":prefix+"-bookmarklet.js"}
+assert manifest["version_name"]==f"{version} development candidate"
+assert all(not name.startswith("sandbox/") and name not in {"prototype.html","sandbox.html","core/model.js","core/monitor-plan.js","core/contracts.js","core/presentation.js","ui/app.js"} for name in files)
 data=archive()
 assert data==archive(),"archive not deterministic"
 for directory in (out,extracted):
     if directory.exists(): shutil.rmtree(directory)
     directory.mkdir(parents=True)
-(out/"extension-development.zip").write_bytes(data)
+(out/asset_names["extension"]).write_bytes(data)
 with ZipFile(io.BytesIO(data)) as z:
     assert set(z.namelist())==files and z.testzip() is None
     z.extractall(extracted)
 for name in files:
     assert (extracted/name).read_bytes()==(src/name).read_bytes()
-for name in ("bookmarklet.txt","bookmarklet.js"):
-    shutil.copyfile(build/name,out/name)
+for name,role in (("bookmarklet.txt","bookmarklet"),("bookmarklet.js","source")):
+    shutil.copyfile(build/name,out/asset_names[role])
+    assert b"fixtureCode" not in (out/asset_names[role]).read_bytes()
+    assert b"function makeSandbox" not in (out/asset_names[role]).read_bytes()
 shutil.copyfile(base/"docs/native-acceptance.md",out/"native-acceptance.md")
-metadata={"schema":"rewards.development-package/1","version":manifest["version"],
-          "commit":git("rev-parse","HEAD").decode().strip(),"rollbackBaseline":baseline,
+metadata={"schema":"rewards.development-package/2","version":version,"channel":"development",
+          "commit":commit,"rollbackBaseline":baseline,"assets":asset_names,
           "status":"development-only; not live accepted"}
+install=(base/"docs/install-development.html").read_text()
+for name,value in {"VERSION":version,"COMMIT":commit,"EXTENSION":asset_names["extension"],"BOOKMARKLET":asset_names["bookmarklet"],"SOURCE":asset_names["source"]}.items():
+    install=install.replace("@"+name+"@",value)
+assert "@"+"VERSION"+"@" not in install
+(out/"install.html").write_text(install)
 (out/"build.json").write_text(json.dumps(metadata,sort_keys=True,indent=2)+"\n")
 (out/"SHA256SUMS.txt").write_text("".join(f"{sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in sorted(out.iterdir())))
-print("Deterministic development ZIP, exact extracted runtime bytes, protected rollback tree PASS")
+print("Deterministic versioned development assets, exact extracted runtime bytes, protected rollback tree, synthetic exclusion PASS")
