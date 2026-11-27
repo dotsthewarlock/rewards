@@ -159,6 +159,52 @@ with sync_playwright() as p:
     page.keyboard.press("Escape");gone()
     page.emulate_media(forced_colors="none")
     assert scenario_count==26 and next(scenarios,None) is None
+    # Distribution page is read-only; all requests remain synthetic.
+    print("Distribution page: current, missing, invalid, offline and retry",flush=True)
+    distribution=browser.new_page(viewport={"width":320,"height":480})
+    distribution.set_default_timeout(10000)
+    address=root+base
+    document=(project/"launcher/index.html").read_text()
+    selection=published
+    available=True
+    requests=[]
+    def distribution_route(route):
+        url=route.request.url;requests.append(url)
+        if url==address:route.fulfill(content_type="text/html",body=document)
+        elif url==address+"channels.json" and available:route.fulfill(content_type="application/json",body=json.dumps(selection))
+        else:route.abort()
+    distribution.route("**/*",distribution_route)
+    def open_distribution():
+        distribution.goto(address)
+        distribution.wait_for_function("document.querySelector('#status').textContent!=='Checking available versions…'")
+    open_distribution()
+    download=distribution.get_by_role("link",name="Download Preview package")
+    assert download.get_attribute("href")==root+published["dev"]["package"]
+    assert distribution.get_by_role("link",name="Get the bookmarklet").get_attribute("href")=="bootstrap.txt"
+    assert distribution.get_by_text("Regular (Stable) · version 15",exact=True).is_visible()
+    assert download.bounding_box()["height"]>=48
+    assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    distribution.get_by_text("About & version details",exact=True).click()
+    assert distribution.get_by_text("Preview: "+published["dev"]["version"],exact=True).is_visible()
+    assert distribution.get_by_text("Package SHA-256: "+published["dev"]["packageSha256"],exact=True).is_visible()
+    assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    assert set(requests)<={address,address+"channels.json",address+"favicon.ico","https://dotsthewarlock.github.io/favicon.ico"}
+    selection={**published,"dev":{**published["dev"],"package":"https://other.invalid/download.zip"}}
+    open_distribution();assert not download.is_visible();assert download.count()==0
+    selection={"schema":1,"stable":published["stable"]}
+    open_distribution();assert distribution.get_by_text("Preview is unavailable.",exact=True).is_visible()
+    selection={**published,"schema":2}
+    open_distribution();assert distribution.get_by_role("button",name="Try again").is_visible()
+    selection=published;available=False
+    open_distribution();assert distribution.get_by_role("button",name="Try again").is_visible()
+    assert not download.is_visible()
+    available=True
+    distribution.get_by_role("button",name="Try again").click()
+    download.wait_for();assert download.get_attribute("href")==root+published["dev"]["package"]
+    distribution.emulate_media(color_scheme="dark",forced_colors="active")
+    assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    distribution.close()
+    print("Distribution page scenarios PASS",flush=True)
     browser.close()
 faulthandler.cancel_dump_traceback_later()
 print("26 synthetic scenario executions PASS",flush=True)
