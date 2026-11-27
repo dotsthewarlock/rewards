@@ -4,15 +4,17 @@
   const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
   if(window.top!==window||!D.allowedOrigin(location.origin)||globalThis.__rewardsDiscoveryLoaded)return;
   globalThis.__rewardsDiscoveryLoaded=true;
+  const documentToken=crypto.randomUUID();
   let observer=null,timer=null,expiry=null,last='',generation=0,root=null,stopped=false;
-  function disconnect(){observer?.disconnect();observer=null;clearTimeout(timer);clearTimeout(expiry);root=null;}
+  function disconnect(){observer?.disconnect();observer=null;clearTimeout(timer);timer=null;clearTimeout(expiry);expiry=null;root=null;}
   function schedule(){
     if(stopped||timer)return;
     timer=setTimeout(()=>{timer=null;capture();},180);
   }
   function bind(id){
-    if(observer&&root===id?.root)return;
-    observer?.disconnect();clearTimeout(expiry);root=id?.root||null;
+    const nextRoot=id?.root||null;
+    if(observer&&root===nextRoot)return;
+    observer?.disconnect();clearTimeout(expiry);root=nextRoot;
     if(!document.body)return;
     observer=new MutationObserver(schedule);
     observer.observe(document.body,{attributes:true,attributeFilter:['data-slug'],childList:true});
@@ -41,9 +43,13 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||m?.type!=='companion.inspect')return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards'].includes(m?.type))return;
     const report=D.report(document);
-    reply({report,summary:report?.status==='recognized'?L.summary(localStorage,report.campaign):null});
+    if(m.type==='companion.exportRewards'){
+      if(stopped||m.documentToken!==documentToken||report?.status!=='recognized'||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
+      return reply(L.exportRows(localStorage,report.campaign));
+    }
+    reply({report,documentToken,summary:report?.status==='recognized'?L.summary(localStorage,report.campaign):null});
   });
   window.addEventListener('pagehide',()=>{stopped=true;disconnect();last='';generation++;});
   window.addEventListener('pageshow',()=>{if(stopped){stopped=false;capture();}});

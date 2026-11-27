@@ -44,5 +44,21 @@
     return {ok:true,queue:Object.fromEntries(countKeys.map(k=>[k,input.queue[k]])),history:input.history,rewards:input.rewards,
       emailConfigured:input.emailConfigured,clipboard:input.clipboard,auto:input.auto,unresolved:input.unresolved};
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate});
+  // Explicit export only. No migration, recovery, writes, or diagnostic records.
+  const fields=Object.freeze(['cardMerchant','valueRecent','gcNumber','gcPin']);
+  function exportRows(storage,slug){
+    if(globalThis.RewardsDiscovery.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
+    try{
+      const raw=storage.getItem(key(slug,'giftcards'));
+      const rows=raw===null?[]:JSON.parse(raw);
+      if(!Array.isArray(rows)||rows.length>999||rows.some(row=>!row||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))throw Error('invalid-cache');
+      return {ok:true,rows:rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
+    }catch{return {ok:false,reason:'unreadable-cache'};}
+  }
+  function validateExport(input){
+    if(input?.ok!==true||!Array.isArray(input.rows)||input.rows.length>999)return null;
+    if(input.rows.some(row=>!row||Object.keys(row).length!==fields.length||fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))return null;
+    return {ok:true,rows:input.rows.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]])))};
+  }
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport});
 })();

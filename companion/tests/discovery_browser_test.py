@@ -14,7 +14,7 @@ fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 window.clicks=0;document.addEventListener('click',()=>window.clicks++);
 document.addEventListener('submit',e=>{e.preventDefault();window.clicks++});
 localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{code:'000000000000000000000000000001',state:'pending'}]));
-localStorage.setItem('bs_rewards:CA1126VANW:giftcards',JSON.stringify([{gcNumber:'TEST_SECRET_CARD',gcPin:'0000'}]));
+localStorage.setItem('bs_rewards:CA1126VANW:giftcards',JSON.stringify([{cardMerchant:'Fixture',valueRecent:'10.00',gcNumber:'TEST_SECRET_CARD',gcPin:'0000'}]));
 localStorage.setItem('bs_rewards:CA1126VANW:auto','1');
 window.before=JSON.stringify(Object.entries(localStorage).sort());
 </script></body></html>"""
@@ -45,12 +45,20 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         text=json.dumps(records)
         for secret in ("SYNTHETIC_SECRET","PRIVATE_TEST_TOKEN","SECRET@example.invalid","PIN-123","DO-NOT-STORE","TEST_SECRET_CARD","QUERY_SECRET","000000000000000000000000000001"):
             assert secret not in text
+        page.bring_to_front()
+        exported=worker.evaluate("(target)=>exportTab(target)",report["target"])
+        assert exported=={"ok":True,"rows":[{"cardMerchant":"Fixture","valueRecent":"10.00","gcNumber":"TEST_SECRET_CARD","gcPin":"0000"}]}
+        stale=dict(report["target"],documentToken="00000000-0000-0000-0000-000000000000")
+        assert not worker.evaluate("(target)=>exportTab(target)",stale)["ok"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+        print("explicit reward export, stale context rejected, original cache unchanged PASS",flush=True)
         before=len(records)
         page.evaluate("document.body.dataset.slug='CA1126PZFT'")
         page.wait_for_timeout(600)
         conflict=worker.evaluate("(id)=>inspectTab(id)",tab)
         assert conflict["report"]["status"]=="conflict" and conflict["summary"] is None
         assert worker.evaluate("async()=> (await diagnostics()).records.length")==before
+        assert not worker.evaluate("(target)=>exportTab(target)",report["target"])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
         print("sanitized diagnostics persisted; conflict blocks cache read and recording PASS",flush=True)
     finally:ctx.close()

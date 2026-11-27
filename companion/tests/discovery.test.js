@@ -37,3 +37,13 @@ test('legacy reader uses exact origin-local v15 keys without writes or credentia
  assert.deepEqual(L.summary(storage,slug),{ok:false,reason:'unreadable-cache'});
  assert.equal(L.summary(storage,'not-a-slug').ok,false);
 });
+
+test('explicit legacy export preserves leading zeros and whitelists columns; malformed records fail closed',()=>{
+ const raw=JSON.stringify([{cardMerchant:'Fixture',valueRecent:'10.00',gcNumber:'000123',gcPin:'0000',sourceRedemptionCode:'private'}]);
+ const storage={getItem:k=>k==='bs_rewards:'+slug+':giftcards'?raw:null};
+ const result=L.exportRows(storage,slug);
+ assert.deepEqual(result,{ok:true,rows:[{cardMerchant:'Fixture',valueRecent:'10.00',gcNumber:'000123',gcPin:'0000'}]});
+ assert.deepEqual(L.validateExport(result),result);
+ assert.equal(L.validateExport({ok:true,rows:[{...result.rows[0],extra:'private'}]}),null);
+ assert.equal(L.exportRows({getItem:()=>JSON.stringify([{gcNumber:123}])},slug).ok,false);
+});

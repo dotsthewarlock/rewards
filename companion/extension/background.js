@@ -5,6 +5,7 @@ const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:tr
 chrome.runtime.onInstalled.addListener(configure);
 chrome.runtime.onStartup.addListener(configure);
 configure();
+chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(()=>{});
 
 const originOf=url=>{try{return new URL(url).origin;}catch{return null;}};
 const indexURL=chrome.runtime.getURL('index.html');
@@ -12,7 +13,11 @@ let recordingTail=Promise.resolve();
 const serial=job=>{const result=recordingTail.then(job);recordingTail=result.catch(()=>{});return result;};
 async function diagnostics(){
   const x=await chrome.storage.local.get({diagnosticsEnabled:false,structuralRecords:[]});
-  const records=Array.isArray(x.structuralRecords)?x.structuralRecords.filter(row=>row&&D.validate(row.report,row.report?.origin)):[];
+  const records=[];
+  if(Array.isArray(x.structuralRecords))for(const row of x.structuralRecords.slice(0,500)){
+    const report=D.validate(row?.report,row?.report?.origin);
+    if(report?.status==='recognized'&&typeof row.at==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(row.at))records.push({at:row.at,report});
+  }
   return {enabled:x.diagnosticsEnabled===true,records};
 }
 async function record(report){
@@ -37,14 +42,25 @@ async function inspectTab(tabId){
     if(current.url!==tab.url)return {ok:false,reason:'navigation-changed'};
     const report=D.validate(result?.report,origin);
     if(!report)return {ok:false,reason:'unverified-report'};
-    return {ok:true,report,summary:report.status==='recognized'?L.validate(result.summary):null};
+    const target=report.status==='recognized'&&typeof result.documentToken==='string'&&/^[a-f0-9-]{36}$/.test(result.documentToken)?{tabId,origin,campaign:report.campaign,documentToken:result.documentToken}:null;
+    return {ok:true,report,target,summary:report.status==='recognized'?L.validate(result.summary):null};
   }catch{return {ok:false,reason:'content-not-ready'};}
+}
+async function activeTab(){return (await chrome.tabs.query({active:true,currentWindow:true}))[0];}
+async function exportTab(target){
+  if(!target||!Number.isInteger(target.tabId)||!D.allowedOrigin(target.origin)||D.slug(target.campaign)!==target.campaign||typeof target.documentToken!=='string')return {ok:false,reason:'invalid-target'};
+  const tab=await activeTab();
+  if(tab?.id!==target.tabId||originOf(tab.url)!==target.origin)return {ok:false,reason:'context-changed'};
+  const result=await chrome.tabs.sendMessage(tab.id,{type:'companion.exportRewards',origin:target.origin,campaign:target.campaign,documentToken:target.documentToken},{frameId:0});
+  const current=await activeTab();
+  if(current?.id!==tab.id||current.url!==tab.url)return {ok:false,reason:'context-changed'};
+  return L.validateExport(result)||{ok:false,reason:'cache-unavailable'};
 }
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
     if(!Number.isInteger(sender.tab?.id)||sender.frameId!==0||!sender.documentId||
-       originOf(sender.tab.url)!==originOf(sender.url))return {ok:false,reason:'untrusted-source'};
+       (sender.documentLifecycle&&sender.documentLifecycle!=='active')||originOf(sender.tab.url)!==originOf(sender.url))return {ok:false,reason:'untrusted-source'};
     const report=D.validate(m.report,originOf(sender.url));
     if(!report)return {ok:false,reason:'invalid-report'};
     await chrome.action.setBadgeText({tabId:sender.tab.id,text:report.status==='recognized'?'●':'?'}).catch(()=>{});
@@ -53,12 +69,15 @@ async function handle(m,sender){
   }
   if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
   if(m.op==='inspect'){
-    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:(await diagnostics()).enabled,count:(await diagnostics()).records.length}};
+    const tab=await activeTab(),data=await diagnostics();
+    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length}};
   }
   if(m.op==='setDiagnostics'&&typeof m.enabled==='boolean'){
-    await serial(()=>chrome.storage.local.set({diagnosticsEnabled:m.enabled}));return {ok:true};
+    await serial(()=>chrome.storage.local.set({diagnosticsEnabled:m.enabled}));
+    if(m.enabled){const tab=await activeTab();if(tab?.id!==undefined){const result=await inspectTab(tab.id);if(result.report?.status==='recognized')await record(result.report);}}
+    return {ok:true};
   }
+  if(m.op==='exportRewards')return exportTab(m.target);
   if(m.op==='exportDiagnostics'){
     const {records}=await diagnostics();
     return {ok:true,export:{schema:'rewards.structural-export/1',records}};
