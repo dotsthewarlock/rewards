@@ -11,3 +11,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 ## Records
 - [V0.2 shared-core checkpoint (2026-11-27)](2026-11-27_V0.2_shared-core.md): read-only shared workspace/build and verified limitations.
 - [Authority reconciliation (2026-11-27)](2026-11-27_authority.md): one-time architect source audit, compact review contract.
+
+- [V0.2 cache and transaction boundary (2026-11-27)](2026-11-27_V0.2_cache-transaction.md): verified shared edits, fixture-tested persistence and exact capture candidates.
