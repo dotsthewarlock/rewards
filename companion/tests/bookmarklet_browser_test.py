@@ -30,6 +30,21 @@ with sync_playwright() as p:
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
     assert page.evaluate("typeof globalThis.RewardsDiscovery")== "undefined"
     host.get_by_role("button",name="Rewards",exact=True).click()
+    expect(host).to_contain_text("CAD $10.00")
+    expect(host).not_to_contain_text("TEST_SECRET_CARD")
+    host.get_by_label("Find by ending digits or characters").fill("zzzz")
+    expect(host).to_contain_text("0 of 1 records")
+    host.get_by_label("Find by ending digits or characters").fill("")
+    host.get_by_role("button",name="Redemption history",exact=True).click()
+    expect(host).to_contain_text("No matching records.")
+    host.get_by_role("button",name="Saved rewards",exact=True).click()
+    expect(host).to_contain_text("1 of 1 records")
+    for width in (320,360,400,480):
+        page.set_viewport_size({"width":width,"height":800})
+        for view in ("Queue","Rewards","Campaigns","Settings"):
+            host.get_by_role("button",name=view,exact=True).click()
+            assert host.evaluate("el=>el.scrollWidth<=el.clientWidth+1"),(width,view)
+    host.get_by_role("button",name="Rewards",exact=True).click()
     with page.expect_download() as dl:
         host.get_by_role("button",name="Download CSV").click()
     assert '"TEST_SECRET_CARD","0000"' in Path(dl.value.path()).read_text(encoding="utf-8-sig")

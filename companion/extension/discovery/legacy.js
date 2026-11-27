@@ -71,15 +71,24 @@
     try{
       const queue=readRows(storage,slug,'queue').map(r=>({last4:last4(r.code),state:states.includes(r.state)?r.state:'other'}));
       const history=readRows(storage,slug,'history').map(r=>({last4:last4(r.code)||(typeof r.last4==='string'&&/^\d{4}$/.test(r.last4)?r.last4:null)}));
-      return {ok:true,queue,history};
+      // Foreground view only: no full card number, PIN, source code or arbitrary note.
+      const rewards=readRows(storage,slug,'giftcards').map(r=>({
+        last4:typeof r.gcNumber==='string'&&/^[A-Za-z0-9 -]{8,128}$/.test(r.gcNumber)&&r.gcNumber.replace(/[ -]/g,'').length>=8?r.gcNumber.replace(/[ -]/g,'').slice(-4):null,
+        value:typeof r.valueRecent==='string'&&/^\d{1,7}\.\d{2}$/.test(r.valueRecent)?r.valueRecent:null
+      }));
+      return {ok:true,queue,history,rewards};
     }catch{return {ok:false,reason:'unreadable-cache'};}
   }
   function validateDetails(input){
     const suffix=x=>x===null||(typeof x==='string'&&/^\d{4}$/.test(x));
     const rows=(value,keys)=>Array.isArray(value)&&count(value.length)&&value.every(r=>r&&typeof r==='object'&&Object.keys(r).length===keys.length&&keys.every(k=>Object.hasOwn(r,k))&&suffix(r.last4));
-    if(input?.ok!==true||Object.keys(input).length!==3||!rows(input.queue,['last4','state'])||
-       !rows(input.history,['last4'])||input.queue.some(r=>![...states,'other'].includes(r.state)))return null;
-    return {ok:true,queue:input.queue.map(r=>({last4:r.last4,state:r.state})),history:input.history.map(r=>({last4:r.last4}))};
+    const rewards=input?.rewards;
+    if(input?.ok!==true||Object.keys(input).length!==4||!rows(input.queue,['last4','state'])||
+       !rows(input.history,['last4'])||input.queue.some(r=>![...states,'other'].includes(r.state))||
+       !Array.isArray(rewards)||!count(rewards.length)||rewards.some(r=>!r||Object.keys(r).length!==2||
+       !(r.last4===null||typeof r.last4==='string'&&/^[A-Za-z0-9]{4}$/.test(r.last4))||
+       !(r.value===null||typeof r.value==='string'&&/^\d{1,7}\.\d{2}$/.test(r.value))))return null;
+    return {ok:true,queue:input.queue.map(r=>({last4:r.last4,state:r.state})),history:input.history.map(r=>({last4:r.last4})),rewards:rewards.map(r=>({last4:r.last4,value:r.value}))};
   }
   function parseBarcodes(text){
     if(typeof text!=='string'||text.length>262144)throw Error('input-too-large');

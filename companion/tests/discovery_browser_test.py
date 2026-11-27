@@ -54,6 +54,8 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("(target)=>exportTab(target)",stale)["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
         assert report["details"]["queue"]==[{"last4":"0001","state":"pending"}]
+        assert report["details"]["rewards"]==[{"last4":None,"value":"10.00"}]
+        assert "TEST_SECRET_CARD" not in json.dumps(report["details"])
         draft="Receipt: 000000000000000000000000000001\n012345678901234567890123456789"
         preview=worker.evaluate("([target,text])=>previewTab(target,text)",[report["target"],draft])
         assert preview=={"ok":True,"queued":1,"duplicates":1,"overflow":0,"recognized":2}

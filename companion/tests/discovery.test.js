@@ -70,7 +70,7 @@ test('legacy detail packet is masked, bounded and rejects injected fields; previ
  const map=new Map([['bs_rewards:'+slug+':queue',JSON.stringify([{code:a,state:'queued',note:'SECRET'}])],['bs_rewards:'+slug+':history',JSON.stringify([{h:'SECRET_HASH',last4:'1234'}])]]);
  const store={getItem:k=>map.get(k)??null,setItem(){throw Error('unexpected write');}};
  const before=JSON.stringify([...map]),d=L.details(store,slug);
- assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}]});
+ assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}],rewards:[]});
  assert.deepEqual(L.validateDetails(d),d);
  assert.equal(L.validateDetails({...d,queue:[{last4:'6789',state:'queued',code:a}]}),null);
  const p=await L.previewImport(store,slug,a);
@@ -136,4 +136,13 @@ test('email preference validation matches the v15 redemption validator',()=>{
  assert.equal(L.validEdit('saveEmail','fixture@example'),false);
  assert.equal(L.validEdit('saveEmail','fixture@example.invalid'),true);
  assert.equal(L.validEdit('saveEmail',null),false);
+});
+
+test('masked reward browsing never includes full reward credentials or arbitrary metadata',()=>{
+ const storage={getItem:k=>k===L.key(slug,'giftcards')?JSON.stringify([{gcNumber:'1234567890123456',gcPin:'0000',valueRecent:'10.00',note:'PRIVATE_FIXTURE'},{gcNumber:'short',gcPin:'0123',valueRecent:'invalid'}]):null};
+ const d=L.details(storage,slug);
+ assert.deepEqual(d.rewards,[{last4:'3456',value:'10.00'},{last4:null,value:null}]);
+ assert.deepEqual(L.validateDetails(d),d);
+ assert.doesNotMatch(JSON.stringify(d),/1234567890123456|PRIVATE_FIXTURE|0000|0123/);
+ assert.equal(L.validateDetails({...d,rewards:[{last4:'3456',value:'10.00',extra:'PRIVATE_FIXTURE'}]}),null);
 });
