@@ -39,6 +39,24 @@ document.querySelector('form').addEventListener('submit',event=>{{
 window.before=JSON.stringify(Object.entries(localStorage).sort());
 </script></body></html>"""
 
+# Synthetic multi-stage path: the user opens the wizard, progresses manually,
+# and keeps the exact barcode visible in the final form. No real navigation.
+WORKFLOW_FIXTURE = FIXTURE.replace(
+    '<div class="step step_active" id="final">',
+    '<div class="step step_active" id="welcome"><button type="button" id="start">Get My Bonus</button></div>'
+    '<div class="step" id="barcode-step" hidden><button type="button" id="next">Next</button></div>'
+    '<div class="step" id="final" hidden>'
+).replace('value="'+CODE+'" required','value="" required').replace(
+    'value="fixture@example.invalid" required','value="" required'
+).replace('value="1" checked required','value="1" required').replace(
+    '</body></html>', """<script>
+const welcome=document.querySelector('#welcome'),barcodeStep=document.querySelector('#barcode-step'),finalStep=document.querySelector('#final'),codes=document.querySelector('#target_codes');
+barcodeStep.prepend(codes);
+const advance=(from,to)=>{from.hidden=true;from.classList.remove('step_active');to.hidden=false;to.classList.add('step_active');};
+document.querySelector('#start').addEventListener('click',()=>advance(welcome,barcodeStep));
+document.querySelector('#next').addEventListener('click',()=>{finalStep.prepend(codes);advance(barcodeStep,finalStep);});
+</script></body></html>"""
+)
 # Fixture-only explicit user controls, not a production message/API.
 BIND = """()=>{
  const target={origin:location.origin,campaign:'CA1126VANW',documentToken:crypto.randomUUID()};

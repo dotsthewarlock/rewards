@@ -4,7 +4,7 @@ import os
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
-from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
+from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
 root=Path(os.environ.get("COMPANION_EXTENSION_DIR",Path(__file__).resolve().parents[1]/"extension")).resolve()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
@@ -279,8 +279,38 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert_captured(page)
         print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
         exercise_final(page,ctx,root)
+        ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=WORKFLOW_FIXTURE))
         page.goto(FINAL_URL)
         page.bring_to_front()
+        inspect=lambda:worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no target')}""",tab)
+        target=inspect()["target"]
+        untouched=lambda:page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"manual-stage"}
+        assert untouched()
+        page.locator("#start").click()
+        target=inspect()["target"]
+        code=page.locator(".wizard-serial-number")
+        code.fill("999999999999999999999999999999")
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"field-conflict"}
+        assert code.input_value()=="999999999999999999999999999999" and untouched()
+        code.fill("")
+        code.evaluate("el=>el.disabled=true")
+        assert not worker.evaluate("t=>prepareNextTab(t)",target)["ok"] and code.input_value()=="" and untouched()
+        code.evaluate("el=>el.disabled=false")
+        stale=dict(target,documentToken="00000000-0000-0000-0000-000000000000")
+        assert not worker.evaluate("t=>prepareNextTab(t)",stale)["ok"] and code.input_value()=="" and untouched()
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":True,"barcode":True,"email":False}
+        assert code.input_value()==CODE and untouched()
+        page.locator("#next").click()
+        target=inspect()["target"]
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":True,"barcode":True,"email":True}
+        assert page.locator("#workflow_data_email").input_value()=="fixture@example.invalid"
+        assert page.locator("#workflow_data_email_confirmation").input_value()=="fixture@example.invalid"
+        assert not page.locator("#workflow_data_terms_of_service").is_checked() and untouched()
+        assert not worker.evaluate("t=>prepareTab(t)",target)["ok"]
+        page.locator("#workflow_data_terms_of_service").check()
+        assert untouched()
+        print("MV3 staged workflow: manual stages, exact field assistance, conflict/disabled/stale stops and no implicit submission PASS",flush=True)
         final=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target&&r.report?.controls.submit.actionable===1)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no final target')}""",tab)
         target=final["target"]
         prepared=worker.evaluate("t=>prepareTab(t)",target)

@@ -11,7 +11,7 @@ function fixture(){
 }
 test('queue view keeps unresolved state, explicit review and draft gates distinct',()=>{
  const state=fixture(),ready=workspaceQueueView({state,cp,draft:'fixture'});
- assert.match(ready,/1 ready/);assert.match(ready,/Review final claim/);assert.doesNotMatch(ready,/Authorize reviewed claim/);
+ assert.match(ready,/1 ready/);assert.match(ready,/Prepare next redemption/);assert.match(ready,/Review final claim/);assert.doesNotMatch(ready,/Authorize reviewed claim/);
  state.summary.unresolved=true;
  const pending=workspaceQueueView({state,cp,draft:'fixture'});
  assert.match(pending,/No replay or advancement/);assert.match(pending,/data-action="addQueue" disabled/);assert.doesNotMatch(pending,/Review final claim/);

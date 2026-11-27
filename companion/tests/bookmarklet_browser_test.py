@@ -2,7 +2,7 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
-from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
+from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
 root=Path(__file__).resolve().parents[1]
 script=(root/".build/bookmarklet.js").read_text()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW"><main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET"><button type="button">Get My Bonus</button></div></form></main><script>
@@ -130,9 +130,28 @@ with sync_playwright() as p:
     host.get_by_role("button",name="Authorize reviewed claim").click()
     expect(host.locator("#announcement")).to_contain_text("Submission not confirmed")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
-    # Restore the fixture's synthetic native listeners by reloading; no real navigation.
+    # Start from a real synthetic welcome stage, not a prefilled final form.
+    ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=WORKFLOW_FIXTURE))
     page.reload()
     page.evaluate(script)
+    host.get_by_role("button",name="Prepare next redemption").click()
+    expect(host.locator("#announcement")).to_contain_text("Complete the current merchant step manually")
+    page.locator("#start").press("Enter")
+    host.get_by_role("button",name="Refresh connection").click()
+    host.get_by_role("button",name="Prepare next redemption").click()
+    expect(host.locator("#announcement")).to_contain_text("Barcode ready")
+    assert page.locator(".wizard-serial-number").input_value()==CODE
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+    page.locator("#next").press("Enter")
+    host.get_by_role("button",name="Refresh connection").click()
+    host.get_by_role("button",name="Prepare next redemption").click()
+    expect(host.locator("#announcement")).to_contain_text("Barcode and email ready")
+    assert page.locator("#workflow_data_email").input_value()=="fixture@example.invalid"
+    assert page.locator("#workflow_data_email_confirmation").input_value()=="fixture@example.invalid"
+    assert not page.locator("#workflow_data_terms_of_service").is_checked()
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+    page.locator("#workflow_data_terms_of_service").press("Space")
+    host.get_by_role("button",name="Refresh connection").click()
     host.get_by_role("button",name="Review final claim").click()
     host.get_by_label("I confirm the exact claim details and merchant terms").check()
     host.get_by_role("button",name="Authorize reviewed claim").click()

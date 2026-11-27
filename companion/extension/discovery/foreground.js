@@ -127,6 +127,10 @@
     if(!locks||typeof locks.request!=='function')return fail('lock-unavailable');
     let touched=false;
     try{
+      const plan=assistanceFields(doc,target);
+      if(!plan)return fail('fields-blocked');
+      if(!plan.fields.length)return fail('manual-stage');
+      const initialValues=plan.fields.map(f=>f.el.value);
       return await locks.request(L.editLock,{mode:'exclusive',ifAvailable:true},async lock=>{
         if(!lock)return fail('edit-busy');
         if(!contextValid())return fail('context-changed');
@@ -137,15 +141,13 @@
            queue.some(r=>r!==row&&(r.code===row.code&&r.state!=='duplicate'&&r.state!=='error'||r.id===row.id))||
            await L.historyMatcher(L.decodeRows(raw.history))(row.code))return fail('queue-not-ready');
         if(!contextValid()||!L.unchanged(storage,target.campaign,raw))return fail('context-changed');
-        const plan=assistanceFields(doc,target);
-        if(!plan)return fail('fields-blocked');
-        if(!plan.fields.length)return fail('manual-stage');
         const value=f=>f.kind==='barcode'?row.code:email;
         if(plan.fields.some(f=>f.el.value!==''&&f.el.value!==value(f)))return fail('field-conflict');
         const sameFields=()=>{const now=assistanceFields(doc,target);return contextValid()&&L.unchanged(storage,target.campaign,raw)&&
           now&&now.root===plan.root&&now.form===plan.form&&now.step===plan.step&&now.fields.length===plan.fields.length&&
           now.fields.every((f,i)=>f.el===plan.fields[i].el&&f.kind===plan.fields[i].kind&&
             (f.el.value===''||f.el.value===value(f)));};
+        if(!sameFields()||plan.fields.some((f,i)=>f.el.value!==initialValues[i]))return fail('context-changed');
         for(const f of plan.fields){
           if(!sameFields())return fail(touched?'fields-unverified':'context-changed');
           if(f.el.value===value(f))continue;

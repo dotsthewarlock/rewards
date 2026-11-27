@@ -30,6 +30,16 @@ files={"manifest.json",manifest["background"]["service_worker"],manifest["side_p
        "core/campaigns.js","core/codec.js","core/public-catalog.js","ui/components.js","ui/workspace.js",
        "ui/views/workspace-queue.js","ui/views/workspace-rewards.js","ui/views/workspace-campaigns.js","ui/views/workspace-settings.js",
        "ui/live.js","ui/tokens.css","ui/components.css"}
+version=manifest["version"]
+commit=git("rev-parse","HEAD").decode().strip()
+subprocess.check_call(["git","diff","--quiet","HEAD","--"],cwd=repo)
+panel=manifest["side_panel"]["default_path"]
+source_marker='data-build-version="" data-build-commit=""'
+identity=f'data-build-version="{version}" data-build-commit="{commit}"'
+assert (src/panel).read_text().count(source_marker)==1
+def runtime_bytes(name):
+    raw=(src/name).read_bytes()
+    return raw.replace(source_marker.encode(),identity.encode()) if name==panel else raw
 def archive():
     buf=io.BytesIO()
     with ZipFile(buf,"w",compression=ZIP_STORED) as z:
@@ -37,10 +47,8 @@ def archive():
             entry=ZipInfo(name,date_time=(1980,1,1,0,0,0))
             entry.create_system=3
             entry.external_attr=0o100644<<16
-            z.writestr(entry,(src/name).read_bytes())
+            z.writestr(entry,runtime_bytes(name))
     return buf.getvalue()
-version=manifest["version"]
-commit=git("rev-parse","HEAD").decode().strip()
 prefix=f"rewards-companion-{version}-dev-{commit[:12]}"
 asset_names={"extension":prefix+"-extension.zip","bookmarklet":prefix+"-bookmarklet.txt","source":prefix+"-bookmarklet.js"}
 assert manifest["version_name"]==f"{version} development candidate"
@@ -55,11 +63,14 @@ with ZipFile(io.BytesIO(data)) as z:
     assert set(z.namelist())==files and z.testzip() is None
     z.extractall(extracted)
 for name in files:
-    assert (extracted/name).read_bytes()==(src/name).read_bytes()
+    assert (extracted/name).read_bytes()==runtime_bytes(name)
 for name,role in (("bookmarklet.txt","bookmarklet"),("bookmarklet.js","source")):
     shutil.copyfile(build/name,out/asset_names[role])
     assert b"fixtureCode" not in (out/asset_names[role]).read_bytes()
     assert b"function makeSandbox" not in (out/asset_names[role]).read_bytes()
+# Both distributions must carry exactly the same generated public identity.
+assert identity.encode() in (extracted/panel).read_bytes()
+assert json.dumps(identity)[1:-1].encode() in (out/asset_names["source"]).read_bytes()
 shutil.copyfile(base/"docs/native-acceptance.md",out/"native-acceptance.md")
 metadata={"schema":"rewards.development-package/2","version":version,"channel":"development",
           "commit":commit,"rollbackBaseline":baseline,"assets":asset_names,

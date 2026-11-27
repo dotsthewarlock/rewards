@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const base=fileURLToPath(new URL('../',import.meta.url));
 const read=p=>fs.readFileSync(path.join(base,p),'utf8');
@@ -15,7 +16,15 @@ function flatten(name){
  return source;
 }
 export function buildBookmarklet(){
- const html=read('extension/index.html');
+ let html=read('extension/index.html');
+ // A dirty or non-repository local build must never claim a published identity.
+ try{
+   const git=(...args)=>execFileSync('git',args,{cwd:base,stdio:['ignore','pipe','ignore']}).toString().trim();
+   git('diff','--quiet','HEAD','--');
+   const commit=git('rev-parse','HEAD'),version=JSON.parse(read('extension/manifest.json')).version;
+   if(/^[a-f0-9]{40}$/.test(commit)&&/^\d+\.\d+\.\d+$/.test(version))
+     html=html.replace('data-build-version="" data-build-commit=""','data-build-version="'+version+'" data-build-commit="'+commit+'"');
+ }catch{}
  const markup=html.match(/<body>([\s\S]*?)<script type="module"/)?.[1];
  if(!markup)throw Error('Workspace markup not found');
  const tokens=read('extension/ui/tokens.css').replaceAll(':root',':host');

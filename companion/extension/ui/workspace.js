@@ -9,6 +9,10 @@ import '../core/workspace-contract.js';
 // Platform-neutral workspace. The transport owns identity, persistence and authorization.
 export function mountWorkspace(root,request,{recording=true}={}){
 const $=id=>root.getElementById(id);
+const marker=root.querySelector('header[data-build-commit]');
+const version=marker?.dataset.buildVersion,commit=marker?.dataset.buildCommit;
+const build=/^\d+\.\d+\.\d+$/.test(version||'')&&/^[a-f0-9]{40}$/.test(commit||'')?
+  Object.freeze({version,commit,distribution:recording?'Chrome extension':'Bookmarklet'}):null;
 let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null;
 let catalog=null,catalogBusy=false,catalogError=false;
 let revealedReward=null,revealEpoch=0,revealTimer=null;
@@ -56,7 +60,7 @@ function render(){
  const body=screen==='queue'?workspaceQueueView({state,cp,draft,preview,page,editing,reviewed}):
    screen==='rewards'?workspaceRewardsView({state,browseTab,browseSearch,rewardPage,historyPage,revealedReward}):
    screen==='campaigns'?workspaceCampaignsView({cp,recording,catalog,catalogBusy,catalogError}):
-   workspaceSettingsView({state,emailDraft,editing,recording});
+   workspaceSettingsView({state,emailDraft,editing,recording,build});
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
  if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
  else if(action){
