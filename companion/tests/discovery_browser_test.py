@@ -1,10 +1,11 @@
 """Native isolated-world discovery against synthetic route fulfillment, never a real merchant."""
 from pathlib import Path
+import os
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
-root=Path(__file__).resolve().parents[1]/"extension"
+root=Path(os.environ.get("COMPANION_EXTENSION_DIR",Path(__file__).resolve().parents[1]/"extension")).resolve()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
 <div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET">
@@ -83,6 +84,23 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert row=={"ok":True,"snapshot":selection,"index":0,"row":exported["rows"][0]}
             assert not panel.evaluate("([t,s])=>chrome.runtime.sendMessage({type:'companion.workspace',op:'revealReward',target:t,snapshot:s,index:0})",[connected["target"],snapshot])["ok"]
             expect(panel.locator("main")).not_to_contain_text("TEST_SECRET_CARD")
+            diagnostic_export=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'exportDiagnostics'})")
+            assert diagnostic_export["export"]["provenance"]["distribution"]=="mv3"
+            assert diagnostic_export["export"]["provenance"]["evidence"]=="structural-only"
+            assert "TEST_SECRET_CARD" not in json.dumps(diagnostic_export)
+            assert diagnostic_export["export"]["records"]==records
+            # Invalid existing observations must not be silently discarded by recording.
+            original=worker.evaluate("async()=> (await chrome.storage.local.get('structuralRecords')).structuralRecords")
+            worker.evaluate("rows=>chrome.storage.local.set({structuralRecords:[...rows,{invalid:true}]})",original)
+            assert worker.evaluate("async()=> (await diagnostics()).blocked")
+            variant=dict(report["report"],labels=[])
+            assert not worker.evaluate("r=>record(r)",variant)["ok"]
+            assert worker.evaluate("async()=> (await chrome.storage.local.get('structuralRecords')).structuralRecords")==original+[{"invalid":True}]
+            worker.evaluate("rows=>chrome.storage.local.set({structuralRecords:Array.from({length:500},()=>rows[0])})",original)
+            assert worker.evaluate("async()=> (await diagnostics()).blocked")
+            assert not worker.evaluate("r=>record(r)",variant)["ok"]
+            assert worker.evaluate("async()=> (await chrome.storage.local.get('structuralRecords')).structuralRecords.length")==500
+            worker.evaluate("rows=>chrome.storage.local.set({structuralRecords:rows})",original)
             print("Connected MV3 index workspace, actual sender validation and read-only single-row response PASS",flush=True)
         finally:
             panel.close()

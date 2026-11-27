@@ -19,7 +19,9 @@ async function diagnostics(){
     const report=D.validate(row?.report,row?.report?.origin);
     if(report?.status==='recognized'&&typeof row.at==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(row.at))records.push({at:row.at,report});
   }
-  return {enabled:x.diagnosticsEnabled===true,records};
+  const rawCount=Array.isArray(x.structuralRecords)?x.structuralRecords.length:0;
+  const blocked=!Array.isArray(x.structuralRecords)||rawCount!==records.length||records.length>=500;
+  return {enabled:x.diagnosticsEnabled===true,records,blocked};
 }
 async function record(report){
   return serial(async()=>{
@@ -27,7 +29,7 @@ async function record(report){
     if(!data.enabled||report.status!=='recognized')return {ok:true};
     const sig=JSON.stringify(report);
     if(data.records.some(row=>JSON.stringify(row.report)===sig))return {ok:true};
-    if(data.records.length>=500)return {ok:false,reason:'diagnostics-limit'};
+    if(data.blocked)return {ok:false,reason:'diagnostics-retention-blocked'};
     const records=[...data.records,{at:new Date().toISOString(),report}];
     await chrome.storage.local.set({structuralRecords:records});
     return {ok:true};
@@ -101,7 +103,7 @@ async function handle(m,sender){
   if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
   if(m.op==='inspect'){
     const tab=await activeTab(),data=await diagnostics();
-    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length}};
+    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length,blocked:data.blocked}};
   }
   if(m.op==='setDiagnostics'&&typeof m.enabled==='boolean'){
     await serial(()=>chrome.storage.local.set({diagnosticsEnabled:m.enabled}));
@@ -117,8 +119,8 @@ async function handle(m,sender){
   if(m.op==='cancelFinal')return cancelTab(m.target,m.attemptId);
   if(m.op==='authorizeFinal')return authorizeTab(m.target,m.attemptId,m.confirmed);
   if(m.op==='exportDiagnostics'){
-    const {records}=await diagnostics();
-    return {ok:true,export:{schema:'rewards.structural-export/1',records}};
+    const {records,blocked}=await diagnostics();
+    return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'mv3',scope:'retained-structural-observations',evidence:'structural-only',version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),recordingBlocked:blocked},records}};
   }
   return {ok:false,reason:'unsupported-command'};
 }

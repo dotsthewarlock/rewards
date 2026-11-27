@@ -58,7 +58,7 @@ function render(){
        body+=reviewed?finalReviewView():'<section class="surface stack"><h3>Review merchant form</h3><p>Complete the native merchant steps and terms, leaving the final form visible. Do not submit separately. Unknown layouts and choices remain blocked.</p>'+button('Review final claim','prepareFinal',{primary:true,disabled:editing||r.controls.submit.actionable!==1})+'</section>';
      }
      if(r?.stage==='success'&&summary.unresolved&&state.recovery)body+='<section class="surface stack"><h3>Unresolved reward</h3><p>Reviewed attempt ending '+esc(state.recovery.last4)+'. Inspect the matching merchant confirmation before capture. No claim will be submitted or advanced.</p>'+button('Capture matching reward','reconcileSuccess',{primary:true,disabled:editing,extra:'data-value="'+esc(state.recovery.attemptId)+'"'})+'</section>';
-     body+='<section class="surface stack"><label for="importDraft">Redemption codes</label><textarea id="importDraft" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="Paste 30-digit codes or receipt text">'+esc(draft)+'</textarea>'+'<div class="row">'+button('Add to queue','addQueue',{primary:true,disabled:editing||summary.unresolved||!draft.trim()})+button('Preview','previewImport',{disabled:editing||!draft.trim()})+'</div><p class="muted">Close other v15 workspaces before editing. Adding codes never submits a claim.</p><p id="importResult" role="status">'+(preview?esc(preview):'')+'</p></section>';
+     body+='<section class="surface stack"><label for="importDraft">Redemption codes</label><textarea id="importDraft" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="Paste 30-digit codes or receipt text">'+esc(draft)+'</textarea>'+'<div class="row">'+button('Paste from clipboard','pasteDraft',{disabled:editing})+button('Add to queue','addQueue',{primary:true,disabled:editing||summary.unresolved||!draft.trim()})+button('Preview','previewImport',{disabled:editing||!draft.trim()})+'</div><p class="muted">Close other v15 workspaces before editing. Adding codes never submits a claim.</p><p id="importResult" role="status">'+(preview?esc(preview):'')+'</p></section>';
      if(details?.ok)body+='<section class="surface"><h3>Existing queue</h3>'+(details.queue.length?maskedList(details.queue,page,'queuePage'):'<p>No queued records.</p>')+'</section>';
    }
  }else if(screen==='rewards'){
@@ -78,7 +78,7 @@ function render(){
    body='<h2>Settings</h2>';
    if(summary?.ok&&state?.target)body+='<section class="surface stack"><h3>Legacy preferences</h3><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p><label for="emailDraft">New redemption email</label><input id="emailDraft" type="email" maxlength="254" autocomplete="off" value="'+esc(emailDraft)+'">'+button('Save email','saveEmail',{disabled:editing||summary.unresolved||!emailDraft.trim()})+check('clipboardPreference','Saved clipboard preference',summary.clipboard,editing||summary.unresolved)+'<p class="muted">Preferences do not authorize claims. Keep legacy v15 closed while editing.</p></section>';
    if(r?.controls)body+='<section class="surface stack"><h3>Current structural evidence</h3><p>Observed counts only; not proof of eligibility or compatibility.</p><ul class="list">'+[['Form','form'],['Barcode field','serial'],['Active step','activeStep'],['Submit controls','submit']].filter(([,key])=>r.controls[key]).map(([name,key])=>'<li><strong>'+esc(name)+'</strong><p>'+r.controls[key].present+' present · '+r.controls[key].visible+' visible · '+r.controls[key].actionable+' actionable</p></li>').join('')+'</ul></section>';
-   body+='<section class="surface stack"><h3>Diagnostics</h3>'+(recording?check('diagnosticsEnabled','Record sanitized structural observations',!!state?.diagnostics?.enabled)+'<p>'+(state?.diagnostics?.count||0)+'/500 distinct records</p>':'<p>Current document only. Background recording requires the extension.</p>')+button('Export diagnostics','export',{disabled:!state?.diagnostics?.count})+'<p>Read-only, scoped to recognized pages. No credentials, raw text or URLs.</p></section>';
+   body+='<section class="surface stack"><h3>Diagnostics</h3>'+(recording?check('diagnosticsEnabled','Record sanitized structural observations',!!state?.diagnostics?.enabled)+'<p>'+(state?.diagnostics?.count||0)+'/500 distinct records</p>'+(state?.diagnostics?.blocked?'<p class="warning">Recording paused: retention limit or invalid existing records. Export valid records; existing storage is preserved.</p>':'')+'<p class="muted">No automatic deletion. Turning recording off retains earlier observations.</p>':'<p>Current document only. Background recording requires the extension.</p>')+button('Export diagnostics','export',{disabled:!state?.diagnostics?.count})+'<p>Read-only, scoped to recognized pages. No credentials, raw text or full URLs. Evidence is structural, not verified live eligibility.</p></section>';
  }
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
  if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
@@ -160,6 +160,18 @@ root.addEventListener('click',async e=>{
  }
  if(target.dataset.action==='addQueue'){await edit('importQueue',draft);return;}
  if(target.dataset.action==='saveEmail'){await edit('saveEmail',emailDraft);return;}
+ if(target.dataset.action==='pasteDraft'){
+   if(!e.isTrusted||editing||screen!=='queue'||!state?.target)return;
+   const n=serial,v=inputVersion,selected=state.target;
+   try{
+     const text=await navigator.clipboard.readText();
+     if(n!==serial||v!==inputVersion||screen!=='queue'||!alive()||!sameTarget(selected,state?.target))return;
+     if(!text.trim()||text.length>262144||draft.length+text.length+1>262144)throw Error();
+     draft+=(draft?'\n':'')+text;inputVersion++;preview=null;render();$('importDraft').focus();
+     $('announcement').textContent='Clipboard added to draft. Review or preview before adding to queue.';
+   }catch{if(n===serial&&v===inputVersion&&screen==='queue'&&alive()){$('importDraft')?.focus();$('announcement').textContent='Clipboard unavailable or too large. Paste directly into Redemption codes.';}}
+   return;
+ }
  if(target.dataset.action==='previewImport'){
    const n=serial,v=inputVersion,selected=state?.target,text=draft;
    if(!selected||!text.trim())return;

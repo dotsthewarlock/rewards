@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -23,7 +24,15 @@ jobs:
       - run: python -m pip install playwright==1.51.0
       - run: python -m playwright install --with-deps chromium
       - run: python companion/tests/browser_test.py
-      - run: python companion/tests/discovery_browser_test.py
-
       - run: npm run build:bookmarklet --prefix companion
+      - run: python companion/scripts/package-development.py
+      - run: python companion/tests/discovery_browser_test.py
+        env:
+          COMPANION_EXTENSION_DIR: companion/.build/packaged-extension
       - run: python companion/tests/bookmarklet_browser_test.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-development-${{ github.sha }}
+          path: companion/.build/development/
+          if-no-files-found: error
+          retention-days: 7
