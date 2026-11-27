@@ -2,7 +2,7 @@ name: Companion synthetic browser verification
 on:
   push:
     branches: [companion-dev]
-    paths: ['companion-preview/**', '.github/workflows/companion-browser.yml']
+    paths: ['companion/**', '.github/workflows/companion-browser.yml']
 permissions:
   contents: read
 jobs:
@@ -13,9 +13,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test --prefix companion
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install playwright==1.51.0
       - run: python -m playwright install --with-deps chromium
-      - run: python companion-preview/browser_test.py
+      - run: python companion/tests/browser_test.py
