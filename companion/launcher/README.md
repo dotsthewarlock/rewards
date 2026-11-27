@@ -1,5 +1,34 @@
-# Permanent bookmarklet bootstrap and hosted loader
+# Permanent bookmarklet bootstrap and hosted launcher
 
-Approved 2026-11-27: separate bookmarklet bootstrap, maintainable hosted selector, channel manifest and versioned script artifacts. The bootstrap URL stays fixed; install by copying bootstrap.txt as the bookmark URL once. Future loader UX changes only edit loader.js. Never replace the original redeem/ files or scanner. Stable pins frozen v15 by SHA-256. Dev pins the exact synthetic-CI-verified V0.6.0 development candidate de3cb5d394100851e2a4005dc9c1e0420311cc60 (run 46049375697, artifact 15223189210); native and live acceptance remain pending. Dev is for testing only, not stable promotion or authorization of live claims. No automatic channel switching, claim or retry by the loader. Close other generations/extension before launch; page-world guards cannot detect every extension workspace. The existing v15 saved bookmark remains independent fallback.
+The launcher is independent of the extension. The saved URL in bootstrap.txt remains frozen. Update loader.js at the same Pages URL; do not ask the user to replace a bookmark. Preserve original redeem/ and scan/ assets and the independent v15 fallback. No live claims, extension installation, or stable promotion are authorized by this loader.
 
-The loader fetches only same GitHub Pages site resources, omits credentials/referrer, rejects redirects, times out, checks selected source bytes against the manifest before execution, and fails closed on invalid or unavailable content. The mutable hosted loader itself is a trust root, not independently pinned; HTTPS and repository/Pages access control are required. No security-policy bypass or remote executable code in MV3. Browser CSP may block the bookmarklet; do not circumvent it. Initial native prompt is intentional; M3 loader UX follows in a separate change. For rollback repoint the manifest to a known exact artifact or use the unchanged original bookmark. Do not overwrite versioned assets. Publication on main adds only companion/launcher/; existing production tree remains intact. Keep this path synchronized with the companion development release contract before merging branches; no automatic promotion.
+## Channels and deployment
+
+Stable pins frozen v15 by SHA-256; changing Stable requires separately accepted V1.0 and an explicit contract revision. Dev is a verified coherent development checkpoint, not the newest commit and not live accepted. The currently pinned Dev source is exact de3cb5d394100851e2a4005dc9c1e0420311cc60, CI 46049375697, artifact 15223189210. Original publication fa91fff / Pages 46068118834. The Dev pointer remains unchanged in this loader cycle.
+
+The optional Test selector is hidden unless the manifest provides a valid versioned Test artifact, a short purpose and read-only mode. Metadata is not a sandbox: before any Test pointer is published, independently verify the artifact cannot initiate live writes or claims. No automatic Test publication or arbitrary version browser. Remove an obsolete Test pointer, not immutable files.
+
+## Gated Dev-only publication
+
+Use an isolated, clean checkout of current main with the existing authorized GitHub CLI and Git credentials. Only choose a coherent checkpoint with recorded applicable safety, privacy and compatibility evidence. A green CI push alone is not promotion. The publication helper validates the exact companion-dev push run, successful workflow, matching nonexpired artifact, outer digest, inner checksums, package and extension metadata and forward ancestry. It never pushes, grants permissions or edits Stable. No new write-capable CI workflow.
+
+1. Run `python companion/launcher/tools/publication.py prepare --commit <40-character SHA> --run <CI run ID> --checkpoint "<functional outcome and evidence>"`.
+2. Commit only the new immutable version folder (bookmarklet source, exact outer development ZIP containing the corresponding extension package and self-contained bookmarklet, publication.json). Fast-forward push against the reviewed main head; do not force. Wait for Pages success.
+3. On a clean checkout of the new current main, run `python companion/launcher/tools/publication.py activate --version <version>-dev-<sha12>`. This rechecks artifact metadata, local and hosted bytes, forward ancestry and the unchanged previous Dev pointer. It changes only channels.json. Commit and fast-forward push. On any conflict, stop and recheck rather than overwrite.
+4. Verify Pages workflow and the separate Launcher verification hosted job. Record exact commit, CI, hashes, previous pointer and outcome. The last verified pointer remains active if preparation or preactivation verification fails. A postpublication discrepancy requires explicit rollback; no automatic channel switching.
+
+Dev distribution ZIPs published this way are testing packages, not GitHub Release assets or stable acceptance. The existing CI artifact can expire; keep immutable published files. No promotion triggered automatically by a development push. GitHub Releases publication and stable acceptance remain separate.
+
+## Loader lifecycle and trust
+
+Native M3 dialog, one selected launch, scoped styles, system appearance. Repeated invocation with a known active page workspace is a no-op; bootstrap and UI single-flight guards prevent duplicate dialogs. Cancel aborts and fences pending work; retry is manual. A short-lived observer only detects removal of the dialog host and is disconnected on exit. The loader does not read credentials or merchant form values. It cannot prove no isolated-world extension or unresolved legacy attempt exists. Never run generations concurrently or switch with an unresolved submission. Stable invokes the established v15 behavior, which can start/resume processing; do not call it merely to test a dialog.
+
+Same-site HTTPS, omitted credentials/referrer, rejected redirects, bounded fetch, exact SHA-256 before eval. Loader and manifest are mutable trust roots, not an independently signed update chain. CSP may block execution; do not circumvent. No remote executable extension code. Unknown/failed execution is not permission to retry a redemption.
+
+## Verification and rollback
+
+Initial isolated M3 browser verification: 27dba4467b65fd7787f3bd280dc05605c8972022 / run 46070141336, 15 synthetic scenarios passed. Later changes must pass the launcher browser and publication gate tests again. Main changes additionally run hosted-byte verification on GitHub Actions. Local runtime has administrator-blocked browser navigation and unavailable Pages DNS, so CI is the verification environment. Native Chromebook and live acceptance remain open.
+
+Loader rollback: restore only loader.js from a known-good commit using a new fast-forward commit; keep bootstrap, artifacts and pointers intact. Dev rollback: explicitly restore a previously verified Dev pointer after checking hosted bytes and absence of unresolved attempts; never automatically roll back or alter Stable. Original v15 bookmark remains independent, not an authorization to switch tools mid-transaction.
+
+Native acceptance: see native-acceptance.md. Integrate this supplement into the existing Companion native session; no separate live claim required.

@@ -29,7 +29,7 @@
   const dialog = document.createElement('dialog');
   const add = (tag,text,cls,parent=dialog) => {const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;parent.append(el);return el;};
   const title=add('h2','Rewards Companion');title.id='loader-title';dialog.setAttribute('aria-labelledby',title.id);
-  const description=add('p','Close other rewards tools before launching.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
+  const description=add('p','Close other rewards tools first. Never switch with an unresolved submission.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
   const stable=add('button','Stable','stable'),dev=add('button','Dev','dev');
   const meta=add('p','Development builds are for testing only.','meta');meta.id='loader-dev';dev.setAttribute('aria-describedby',meta.id);
   const more=add('details','');more.hidden=true;add('summary','Testing builds','',more);
@@ -68,8 +68,9 @@
         if(!active(controller))return;
         if(value?.schema!==1||!stableOK(value.stable))throw Error('Invalid release manifest');
         manifest=value;stable.textContent='Stable · v15';dev.textContent=candidate(value.dev,'dev')?'Dev · '+value.dev.version.split('-dev-')[0]:'Dev unavailable';
+        meta.textContent=candidate(value.dev,'dev')?'Build '+value.dev.version.split('-dev-')[1]+' · Testing only; not live accepted.':'Development unavailable. Stable remains available.';
         if(testOK(value.test)){test.textContent='Test · '+value.test.version.split('-test-')[0];purpose.textContent=value.test.purpose;}
-        status.textContent='Stable uses the established v15 workflow.';
+        status.textContent='Stable launches the established v15 workflow.';
       }else{
         const bytes=await(await get(channel.path,controller)).arrayBuffer();
         if(!active(controller))return;
