@@ -32,3 +32,8 @@ Initial isolated M3 browser verification: 27dba4467b65fd7787f3bd280dc05605c89720
 Loader rollback: restore only loader.js from a known-good commit using a new fast-forward commit; keep bootstrap, artifacts and pointers intact. Dev rollback: explicitly restore a previously verified Dev pointer after checking hosted bytes and absence of unresolved attempts; never automatically roll back or alter Stable. Original v15 bookmark remains independent, not an authorization to switch tools mid-transaction.
 
 Native acceptance: see native-acceptance.md. Integrate this supplement into the existing Companion native session; no separate live claim required.
+
+
+## L2.1 verified deployment
+
+The original V0.6 package is now permanently versioned on GitHub Pages: [public package](https://dotsthewarlock.github.io/rewards/companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-development.zip), [provenance](https://dotsthewarlock.github.io/rewards/companion/launcher/releases/0.6.0-dev-de3cb5d39410/publication.json). Active main [653a763](https://github.com/dotsthewarlock/rewards/commit/653a7630d9a15a310633f063cad98bd6c8f207ca), [Pages 46071881490](https://github.com/dotsthewarlock/rewards/actions/runs/46071881490), [final verification 46071882218](https://github.com/dotsthewarlock/rewards/actions/runs/46071882218) succeeded; all ten hosted hashes matched. Same exact candidate/source, old flat artifact retained. See [L2.1 handoff](../docs/dev/2026-11-27_launcher-L2.1-handoff.md). Native/live acceptance and GitHub Release assets remain open; no stable promotion.
