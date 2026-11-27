@@ -12,7 +12,7 @@
   const byId=id=>campaigns.find(c=>c.id===id);
   function singleChoice(id,origin){
     const c=byId(id);
-    if(c?.origin!==origin||c.products.length!==1||c.rewards.length!==1||c.merchant.length!==1||
+    if(!c||c.origin!==origin||c.products.length!==1||c.rewards.length!==1||c.merchant.length!==1||
        !Number.isSafeInteger(c.cents)||c.cents<=0)return null;
     return {product:c.products[0],reward:c.rewards[0],cardMerchant:c.merchant[0],valueRecent:(c.cents/100).toFixed(2)};
   }

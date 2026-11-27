@@ -8,10 +8,10 @@ URL = "https://getmybonus.ca/CA1126VANW/synthetic-final"
 FIXTURE = f"""<!doctype html><html><body data-slug="{SLUG}">
 <main class="bcr-redemption"><form id="new_workflow_data" method="post" action="/synthetic-only">
 <div class="step step_active" id="final">
-<div id="target_codes"><div class="serial-number_wrapper"><input class="wizard-serial-number" type="text" value="{CODE}" required></div></div>
-<input type="email" id="workflow_data_email" value="fixture@example.invalid" required>
-<input type="email" id="workflow_data_email_confirmation" value="fixture@example.invalid" required>
-<input type="checkbox" id="workflow_data_terms_of_service" checked required>
+<div id="target_codes"><div class="serial-number_wrapper"><input class="wizard-serial-number" type="text" name="workflow_data[serial_number]" value="{CODE}" required></div></div>
+<input type="email" id="workflow_data_email" name="workflow_data[email]" value="fixture@example.invalid" required>
+<input type="email" id="workflow_data_email_confirmation" name="workflow_data[email_confirmation]" value="fixture@example.invalid" required>
+<input type="checkbox" id="workflow_data_terms_of_service" name="workflow_data[terms_of_service]" value="1" checked required>
 <input name="commit" type="submit" value="Show &amp; Email Code">
 </div></form></main><button id="review">Review</button><button id="authorize">Authorize</button>
 <script>
@@ -28,7 +28,14 @@ document.querySelector('[name=commit]').addEventListener('click',()=>{{
  const q=JSON.parse(localStorage.getItem(prefix+'queue'));
  window.pendingAtClick=a?.attempt?.code==='{CODE}'&&q[0].state==='pending'&&q[1].state==='queued';
 }});
-document.querySelector('form').addEventListener('submit',event=>{{event.preventDefault();window.submits++;}});
+document.querySelector('form').addEventListener('submit',event=>{{
+ event.preventDefault();
+ const values=new FormData(event.target,event.submitter);
+ window.exactNativeFields=values.get('workflow_data[serial_number]')==='{CODE}'&&
+  values.get('workflow_data[email]')==='fixture@example.invalid'&&values.get('workflow_data[email_confirmation]')==='fixture@example.invalid'&&
+  values.get('workflow_data[terms_of_service]')==='1'&&values.get('commit')==='Show & Email Code';
+ window.submits++;
+}});
 window.before=JSON.stringify(Object.entries(localStorage).sort());
 </script></body></html>"""
 
@@ -72,6 +79,9 @@ def exercise_final(page, ctx, root: Path):
     for change in (
         "document.querySelector('.wizard-serial-number').value='"+OTHER+"'",
         "document.querySelector('.wizard-serial-number').hidden=true",
+        "document.querySelector('.wizard-serial-number').disabled=true",
+        "document.querySelector('.wizard-serial-number').removeAttribute('name')",
+        "document.querySelector('#final').insertAdjacentHTML('beforeend','<input type=hidden name=\"workflow_data[serial_number]\" value=\"SYNTHETIC_CONFLICT\">')",
         "document.querySelector('#workflow_data_email_confirmation').value='other@example.invalid'",
         "document.querySelector('#workflow_data_terms_of_service').checked=false",
         "document.querySelector('[name=commit]').disabled=true",
@@ -91,6 +101,8 @@ def exercise_final(page, ctx, root: Path):
     # after review and immediately before durable intent/native click.
     for change in (
         "document.querySelector('#workflow_data_email').value='other@example.invalid'",
+        "document.querySelector('.wizard-serial-number').name='workflow_data[other]'",
+        "document.querySelector('#workflow_data_terms_of_service').value='different'",
         "document.querySelector('[name=commit]').replaceWith(document.querySelector('[name=commit]').cloneNode(true))",
         "window.contextValid=false",
         "window.binding.cancel()",
@@ -119,7 +131,7 @@ def exercise_final(page, ctx, root: Path):
     assert r["code"]==CODE and r["email"]=="fixture@example.invalid" and r["terms"]
     assert r["queueId"]=="fixture-row" and r["reward"]=="Walmart eGift Card"
     assert authorize()=={"ok":True,"status":"pending"}
-    assert page.evaluate("window.submits===1&&window.pendingAtClick")
+    assert page.evaluate("window.submits===1&&window.pendingAtClick&&window.exactNativeFields")
     assert not authorize()["ok"]
     assert page.evaluate("window.submits===1")
     print("Shared foreground adapter: exact review, blockers, cancellation, lock, durable native submit and no replay PASS",flush=True)
@@ -131,6 +143,7 @@ def show_linked_success(page):
 def assert_final_captured(page):
     result=page.evaluate("""()=>{const prefix='bs_rewards:CA1126VANW:',get=n=>JSON.parse(localStorage.getItem(prefix+n)||'null');return {active:get('active'),queue:get('queue'),history:get('history'),gifts:get('giftcards'),submits:window.submits}}""")
     assert result["active"] is None and result["submits"]==1
+    assert page.evaluate("window.exactNativeFields===true")
     assert [r["state"] for r in result["queue"]]==["complete","queued"]
     assert len(result["history"])==len(result["gifts"])==1
     assert result["history"][0]["code"]==result["gifts"][0]["sourceRedemptionCode"]==CODE

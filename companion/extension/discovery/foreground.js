@@ -33,13 +33,22 @@
     const terms=one([...step.querySelectorAll('input#workflow_data_terms_of_service,input[name="workflow_data[terms_of_service]"]')].filter(active));
     const submits=[...form.querySelectorAll('button,input')].filter(el=>el.form===form&&el.type==='submit'&&D.actionable(el));
     const submit=one(submits);
-    if(!code||!L.barcode(code.value)||!email||!confirm||email===confirm||
+    if(!code||code.matches(':disabled')||!L.barcode(code.value)||!email||!confirm||email===confirm||
+      !['email','text'].includes(email.type)||!['email','text'].includes(confirm.type)||
       !D.actionable(email)||!D.actionable(confirm)||!L.normalizedEmail(email.value)||confirm.value!==email.value||
       !terms||terms.type!=='checkbox'||!terms.checked||terms.indeterminate||!D.actionable(terms)||
       !submit||!step.contains(submit)||submit.name!=='commit'||!['SUBMIT','SHOW & EMAIL CODE'].includes(label(submit))||
       ['formaction','formtarget','formmethod','formenctype','formnovalidate'].some(a=>submit.hasAttribute(a)))return null;
     if([...step.querySelectorAll('button,input,a')].some(el=>D.actionable(el)&&['NEXT','GET MY BONUS'].includes(label(el))))return null;
-    return {root:id.root,form,step,code,email,confirm,terms,submit,barcode:code.value,address:email.value,url:doc.location.href,action:form.action};
+    // A visible control is not necessarily a successful native form field.
+    // Check only names/metadata, never hidden values. Reject unnamed or
+    // conflicting fields; disabled barcode evidence cannot prove submission.
+    const reviewedControls=[code,email,confirm,terms,submit],all=[...form.elements];
+    if(reviewedControls.some(el=>!el.name||all.filter(n=>n.name===el.name).length!==1))return null;
+    return {root:id.root,form,step,code,email,confirm,terms,submit,barcode:code.value,address:email.value,
+      url:doc.location.href,action:form.action,method:form.method,enctype:form.enctype,target:form.target,
+      codeName:code.name,emailName:email.name,confirmName:confirm.name,termsName:terms.name,
+      termsValue:terms.value,submitValue:submit.value,submitLabel:label(submit)};
   }
   const same=(a,b)=>!!a&&!!b&&Object.keys(a).every(k=>a[k]===b[k]);
   // Creates one immutable review and one one-shot authorization closure.
