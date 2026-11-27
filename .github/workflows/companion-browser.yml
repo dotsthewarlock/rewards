@@ -1,7 +1,7 @@
 name: Companion synthetic browser verification
 on:
   push:
-    branches: [companion-dev]
+    branches: [companion-dev, companion-functional-dev]
     paths: ['companion/**', '.github/workflows/companion-browser.yml']
 permissions:
   contents: read
