@@ -1,5 +1,6 @@
 """Exercise the generated shared workspace on a synthetic page, never a merchant."""
 from pathlib import Path
+import os
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
@@ -79,6 +80,11 @@ with sync_playwright() as p:
     expect(host).to_contain_text("conflict")
     host.get_by_role("button",name="Settings",exact=True).click()
     expect(host).to_contain_text("Background recording requires the extension")
+    if os.environ.get("GITHUB_SHA"):
+        expect(host).to_contain_text("0.6.0 Preview")
+        host.get_by_text("Version details",exact=True).click()
+        expect(host).to_contain_text(os.environ["GITHUB_SHA"])
+        expect(host.get_by_role("link",name="Check for updates")).to_have_attribute("rel","noopener noreferrer")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
     # No writes in the earlier read-only journey. Now enable a ready fixture.
     page.evaluate("""()=>{document.body.dataset.slug='CA1126VANW';localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued'}]));}""")

@@ -77,6 +77,14 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             expect(panel.locator("#context")).to_contain_text("Walmart Canada",timeout=15000)
             expect(panel.locator("main")).to_contain_text("1 pending")
             connected=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
+            if os.environ.get("COMPANION_EXTENSION_DIR") and os.environ.get("GITHUB_SHA"):
+                panel.evaluate("document.querySelector('[data-value=settings]').click()")
+                expect(panel.locator("main")).to_contain_text("0.6.0 Preview")
+                panel.get_by_text("Version details",exact=True).evaluate("el=>el.click()")
+                expect(panel.locator("main")).to_contain_text(os.environ["GITHUB_SHA"])
+                expect(panel.get_by_role("link",name="Check for updates")).to_have_attribute("rel","noopener noreferrer")
+                panel.evaluate("document.querySelector('[data-value=queue]').click()")
+            assert not panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'prepareNext',target:t})",connected["target"])["ok"]
             assert connected["target"]["tabId"]==tab
             assert "TEST_SECRET_CARD" not in json.dumps(connected["details"])
             selection=connected["details"]["rewardSnapshot"]
@@ -297,11 +305,45 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         code.evaluate("el=>el.disabled=true")
         assert not worker.evaluate("t=>prepareNextTab(t)",target)["ok"] and code.input_value()=="" and untouched()
         code.evaluate("el=>el.disabled=false")
+        # A visible challenge, ambiguous field, existing attempt, duplicate history
+        # or origin-wide lock blocks assistance without form or cache mutation.
+        page.locator("#barcode-step").evaluate("el=>el.insertAdjacentHTML('beforeend','<div role=dialog id=blocker>Manual verification required</div>')")
+        assert not worker.evaluate("t=>prepareNextTab(t)",target)["ok"] and code.input_value()=="" and untouched()
+        page.locator("#blocker").evaluate("el=>el.remove()")
+        code.evaluate("el=>{const copy=el.cloneNode(true);copy.id='ambiguous';el.after(copy)}")
+        assert not worker.evaluate("t=>prepareNextTab(t)",target)["ok"] and untouched()
+        page.locator("#ambiguous").evaluate("el=>el.remove()")
+        page.evaluate("localStorage.setItem(prefix+'active',JSON.stringify({phase:'submitted'}))")
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"legacy-busy"}
+        assert code.input_value()=="" and page.evaluate("!!localStorage.getItem(prefix+'active') && window.submits===0")
+        page.evaluate("localStorage.removeItem(prefix+'active')")
+        page.evaluate("(code)=>localStorage.setItem(prefix+'history',JSON.stringify([{code}]))",CODE)
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"queue-not-ready"}
+        assert code.input_value()=="" and page.evaluate("!!localStorage.getItem(prefix+'history') && window.submits===0")
+        page.evaluate("localStorage.removeItem(prefix+'history')")
+        page.evaluate("""()=>new Promise(resolve=>navigator.locks.request('bs_rewards:companion:data-v1',()=>new Promise(release=>{window.releasePrep=release;resolve()})))""")
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"edit-busy"}
+        page.evaluate("window.releasePrep()")
+        assert code.input_value()=="" and untouched()
         stale=dict(target,documentToken="00000000-0000-0000-0000-000000000000")
         assert not worker.evaluate("t=>prepareNextTab(t)",stale)["ok"] and code.input_value()=="" and untouched()
-        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":True,"barcode":True,"email":False}
+        prep_panel=ctx.new_page()
+        try:
+            prep_panel.goto(f"chrome-extension://{ext_id}/index.html")
+            page.bring_to_front()
+            assert prep_panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'prepareNext',target:t})",target)=={"ok":True,"barcode":True,"email":False}
+        finally:
+            prep_panel.close()
+            page.bring_to_front()
         assert code.input_value()==CODE and untouched()
         page.locator("#next").click()
+        target=inspect()["target"]
+        # A merchant rerender during the first field's event must stop the remaining
+        # writes, with no implicit rollback or submission.
+        page.locator("#workflow_data_email").evaluate("el=>el.addEventListener('input',()=>{const c=document.querySelector('#workflow_data_email_confirmation');c.replaceWith(c.cloneNode(true))},{once:true})")
+        assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":False,"reason":"fields-unverified"}
+        assert page.locator("#workflow_data_email_confirmation").input_value()=="" and untouched()
+        # User has inspected the partial visible result; a fresh explicit click is safe.
         target=inspect()["target"]
         assert worker.evaluate("t=>prepareNextTab(t)",target)=={"ok":True,"barcode":True,"email":True}
         assert page.locator("#workflow_data_email").input_value()=="fixture@example.invalid"
