@@ -57,51 +57,67 @@ with sync_playwright() as p:
         page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Stable · v15'")
     setup();ready()
     assert page.get_by_role("dialog").bounding_box()["width"]<=320
-    assert not page.get_by_text("Testing builds").is_visible()
+    assert not page.get_by_text("More testing options").is_visible()
     page.evaluate("window.run()");assert page.get_by_role("dialog").count()==1
     assert len(page.evaluate("calls"))==2
     page.keyboard.press("Escape");gone();assert page.evaluate("document.activeElement.id")=="original";check(0)
-    setup();button("Dev · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
-    setup(body="window.launches=99");button("Dev · 0.6.0").click();page.get_by_text("Script integrity check failed; nothing launched.",exact=False).wait_for();check(0);button("Cancel").click();gone()
-    setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("window.run()");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
+    setup();button("Preview · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
+    setup(body="window.launches=99");button("Preview · 0.6.0").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
+    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("window.run()");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
     setup(busy=True);page.wait_for_function("calls.length===1&&!window[Symbol.for('rewards.companion.launcher')]");assert page.evaluate("errors.length")==0;check(0)
-    setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
-    setup(fail=True);button("Dev · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
+    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
+    setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     setup(manifest_fail=True);button("Retry").wait_for();page.evaluate("window.manifestFail=false");button("Retry").click();ready();button("Cancel").click();gone()
-    setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Dev unavailable").wait_for();assert button("Dev unavailable").is_disabled();button("Cancel").click();gone()
-    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Invalid release manifest; nothing launched.").wait_for();assert button("Stable").is_disabled();button("Cancel").click();gone()
-    setup();button("Stable · v15").click();page.get_by_text("Script integrity check failed; nothing launched.",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
+    setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Preview unavailable").wait_for();assert button("Preview unavailable").is_disabled();button("Cancel").click();gone()
+    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Could not find available versions. Nothing opened.").wait_for();assert button("Stable").is_disabled();button("Cancel").click();gone()
+    setup();button("Stable · v15").click();page.get_by_text("Could not safely check",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
     setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
-    setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("Testing builds").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
-    setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("Testing builds").is_visible();button("Cancel").click();gone()
-    setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
+    setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("More testing options").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
+    setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("More testing options").is_visible();button("Cancel").click();gone()
+    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
     page.emulate_media(color_scheme="dark");setup();ready();assert page.get_by_role("dialog").evaluate("(e)=>getComputedStyle(e).backgroundColor")=="rgb(33, 35, 43)";page.keyboard.press("Escape");gone()
     # Targeted UX/lifecycle regressions, preserving the original scenarios.
     page.emulate_media(color_scheme="light")
     setup();ready()
+    assert not page.get_by_text(manifest["dev"]["version"],exact=False).is_visible()
+    page.get_by_text("Help & version details",exact=True).click()
     assert page.get_by_text(manifest["dev"]["version"],exact=False).is_visible()
-    assert page.get_by_role("status").inner_text()=="Choose a channel."
-    page.keyboard.press("Tab");assert button("Dev · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
+    link=page.get_by_role("link",name="Report a problem")
+    assert link.get_attribute("href")=="https://github.com/dotsthewarlock/rewards/issues/new"
+    assert link.get_attribute("rel")=="noopener noreferrer"
+    assert link.get_attribute("referrerpolicy")=="no-referrer"
+    assert page.get_by_text("Reports are public",exact=False).is_visible()
+    assert len(page.evaluate("calls"))==2
+    page.get_by_text("Help & version details",exact=True).click()
+    button("Stable · v15").focus()
+    assert page.get_by_role("status").inner_text()=="Choose a version."
+    page.keyboard.press("Tab");assert button("Preview · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Shift+Tab");assert button("Stable · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Escape");gone();check(0)
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});ready()
-    page.get_by_text("Testing builds").click()
+    page.get_by_text("More testing options").click()
+    assert page.get_by_text("Synthetic diagnostics",exact=True).is_visible()
+    page.get_by_text("Help & version details",exact=True).click()
     assert page.get_by_text(entry("test")["version"],exact=False).is_visible()
-    assert page.get_by_text("Testing builds").evaluate("(e)=>getComputedStyle(e).display")=="list-item"
+    assert page.get_by_text("More testing options").evaluate("(e)=>getComputedStyle(e).display")=="list-item"
     page.keyboard.press("Escape");gone()
-    setup(delay=True);button("Dev · 0.6.0").click()
-    assert page.get_by_role("status").inner_text()=="Loading Dev..."
+    setup(delay=True);button("Preview · 0.6.0").click()
+    assert page.get_by_role("status").inner_text()=="Opening Preview..."
     button("Cancel").click();gone()
     page.evaluate("window.run()");ready();page.wait_for_timeout(500);check(0)
-    assert page.get_by_role("status").inner_text()=="Choose a channel."
+    assert page.get_by_role("status").inner_text()=="Choose a version."
     page.keyboard.press("Escape");gone()
-    setup(fail=True);button("Dev · 0.6.0").click();button("Retry").wait_for()
-    assert page.get_by_role("status").inner_text().startswith("Dev:")
+    setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for()
+    assert page.get_by_role("status").inner_text().startswith("Could not download Preview.")
+    assert not page.get_by_text("Check failed: download (Preview).",exact=True).is_visible()
+    page.get_by_text("Help & version details",exact=True).click()
+    assert page.get_by_text("Check failed: download (Preview).",exact=True).is_visible()
+    button("Retry").focus()
     assert button("Retry").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     focus_source="window.launches++;const b=document.createElement('button');b.id='launched-focus';document.body.append(b);b.focus();"
     focus_manifest={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(focus_source.encode()).hexdigest()}}
-    setup(m=focus_manifest,body=focus_source);button("Dev · 0.6.0").click();gone()
+    setup(m=focus_manifest,body=focus_source);button("Preview · 0.6.0").click();gone()
     assert page.evaluate("document.activeElement.id")=="launched-focus"
     for width in (320,360,400,480):
         page.set_viewport_size({"width":width,"height":480})
