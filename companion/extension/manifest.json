@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Rewards Companion - development",
   "version": "0.2.0",
-  "description": "Read-only campaign discovery, explicit legacy cache management. Claim submission disabled.",
+  "description": "Passive discovery and explicit reviewed foreground workflow. Development candidate; not live accepted.",
   "permissions": [
     "sidePanel",
     "storage"
@@ -47,8 +47,10 @@
       "js": [
         "discovery/core.js",
         "discovery/legacy.js",
+        "core/registry.js",
         "core/transactions.js",
         "discovery/success.js",
+        "discovery/foreground.js",
         "discovery/content.js"
       ],
       "run_at": "document_idle",

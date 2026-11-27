@@ -2,6 +2,7 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
+from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
 root=Path(__file__).resolve().parents[1]
 script=(root/".build/bookmarklet.js").read_text()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW"><main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET"><button type="button">Get My Bonus</button></div></form></main><script>
@@ -76,6 +77,26 @@ with sync_playwright() as p:
     expect(host.locator("#announcement")).to_contain_text("Matching reward captured")
     assert_captured(page)
     expect(host.get_by_role("button",name="Capture matching reward")).to_have_count(0)
+    ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=FINAL_FIXTURE))
+    page.goto(FINAL_URL)
+    page.evaluate(script)
+    host.get_by_role("button",name="Review final claim").click()
+    expect(host).to_contain_text(CODE)
+    expect(host).to_contain_text("fixture@example.invalid")
+    expect(host.get_by_role("button",name="Authorize reviewed claim")).to_be_disabled()
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+    host.get_by_label("I confirm the exact claim details and merchant terms").check()
+    host.get_by_role("button",name="Authorize reviewed claim").click()
+    expect(host.locator("#announcement")).to_contain_text("Submission attempted")
+    assert page.evaluate("window.submits===1&&window.pendingAtClick")
+    expect(host.get_by_role("button",name="Authorize reviewed claim")).to_have_count(0)
+    show_linked_success(page)
+    host.get_by_role("button",name="Refresh connection").click()
+    host.get_by_role("button",name="Capture matching reward").click()
+    expect(host.locator("#announcement")).to_contain_text("Matching reward captured")
+    assert_final_captured(page)
+    expect(host.get_by_role("button",name="Review final claim")).to_have_count(0)
     assert not errors,errors
     browser.close()
+    print("Bookmarklet actual foreground UI: exact review, explicit confirmation, pending intent, linked capture PASS")
     print("Shared bookmarklet workspace, explicit cache edits, read-only mount, stale identity and no merchant actions PASS")

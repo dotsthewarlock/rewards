@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright
 from claim_fixture import CODE, URL, success_fixture, assert_captured
-from foreground_fixture import exercise_final
+from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
 root=Path(__file__).resolve().parents[1]/"extension"
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
@@ -129,4 +129,24 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert_captured(page)
         print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
         exercise_final(page,ctx,root)
+        page.goto(FINAL_URL)
+        page.bring_to_front()
+        final=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.target&&r.report?.controls.submit.actionable===1)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no final target')}""",tab)
+        target=final["target"]
+        prepared=worker.evaluate("t=>prepareTab(t)",target)
+        assert prepared["ok"] and prepared["review"]["code"]==CODE
+        attempt=prepared["review"]["attemptId"]
+        assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+        assert not worker.evaluate("([t,a])=>authorizeTab(t,a,false)",[target,attempt])["ok"]
+        assert not worker.evaluate("([t,a])=>authorizeTab(t,a,true)",[target,"00000000-0000-0000-0000-000000000099"])["ok"]
+        assert worker.evaluate("([t,a])=>authorizeTab(t,a,true)",[target,attempt])=={"ok":True,"status":"pending"}
+        assert page.evaluate("window.submits===1&&window.pendingAtClick")
+        assert not worker.evaluate("([t,a])=>authorizeTab(t,a,true)",[target,attempt])["ok"]
+        show_linked_success(page)
+        recovered=worker.evaluate("t=>inspectTab(t)",tab)
+        assert recovered["recovery"]["attemptId"]==attempt
+        assert worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt])=={"ok":True,"status":"complete"}
+        assert_final_captured(page)
+        assert not worker.evaluate("t=>prepareTab(t)",target)["ok"]
+        print("MV3 actual shared transport: exact review, explicit authorization, pending intent, linked capture, no replay/advance PASS",flush=True)
     finally:ctx.close()

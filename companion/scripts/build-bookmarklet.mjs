@@ -4,13 +4,13 @@ import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 const base=fileURLToPath(new URL('../',import.meta.url));
 const read=p=>fs.readFileSync(path.join(base,p),'utf8');
-const classic=['discovery/core.js','discovery/legacy.js','core/transactions.js','discovery/success.js'];
+const classic=['discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js','discovery/success.js','discovery/foreground.js'];
 // Explicit acyclic dependency order. Only the project's current named ESM syntax is supported.
 // Fail closed on unrecognized syntax; no runtime loader or remote executable dependency.
-const modules=['core/contracts.js','core/campaigns.js','core/codec.js','ui/components.js','ui/workspace.js'];
+const modules=['core/campaigns.js','core/codec.js','ui/components.js','ui/workspace.js'];
 function flatten(name){
  const original=read('extension/'+name);
- const source=original.replace(/^import \{[A-Za-z0-9_,\s]+\} from '\.[^'\n]+';\r?$/gm,'').replace(/^export (?=(?:async )?(?:const|function)\b)/gm,'');
+ const source=original.replace(/^import '\.\/registry\.js';\r?$/gm,'').replace(/^import \{[A-Za-z0-9_,\s]+\} from '\.[^'\n]+';\r?$/gm,'').replace(/^export (?=(?:async )?(?:const|function)\b)/gm,'');
  if(/^\s*(?:import|export)\b/m.test(source))throw Error('Unsupported module syntax in '+name);
  return source;
 }

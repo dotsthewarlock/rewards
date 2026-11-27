@@ -130,5 +130,5 @@
       }catch{return fail(attempted?'capture-unknown':'unreadable-cache');}
     });
   }
-  globalThis.RewardsTransactions=Object.freeze({validReview,startAttempt,reconcileSuccess,pendingSelection});
+  globalThis.RewardsTransactions=Object.freeze({validReview,exactReview,startAttempt,reconcileSuccess,pendingSelection});
 })();

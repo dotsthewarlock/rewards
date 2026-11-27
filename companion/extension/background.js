@@ -1,6 +1,6 @@
 'use strict';
-importScripts('discovery/core.js','discovery/legacy.js');
-const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
+importScripts('discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js');
+const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns;
 const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(configure);
 chrome.runtime.onStartup.addListener(configure);
@@ -73,6 +73,18 @@ const editTab=(target,op,value)=>L.validEdit(op,value)?scopedOperation(target,'c
 const reconcileTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'companion.reconcileSuccess',{attemptId},result=>
   result?.ok===true&&result.status==='complete'?{ok:true,status:'complete'}:
   result?.ok===false?{ok:false,reason:'reconciliation-blocked'}:null,true):{ok:false,reason:'invalid-target'};
+function validatePrepared(result,target){
+  if(result?.ok===false)return {ok:false,reason:'form-not-ready'};
+  const r=result?.review,choice=R.singleChoice(target.campaign,target.origin);
+  if(result?.ok!==true||!choice||!T.validReview(r)||r.origin!==target.origin||r.campaign!==target.campaign||
+    r.documentToken!==target.documentToken||Object.keys(choice).some(k=>r[k]!==choice[k]))return null;
+  return {ok:true,review:T.exactReview(r)};
+}
+const prepareTab=target=>scopedOperation(target,'companion.prepareFinal',{},result=>validatePrepared(result,target));
+const cancelTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,'companion.cancelFinal',{attemptId},r=>r?.ok===true?{ok:true}:null):{ok:false};
+const authorizeTab=(target,attemptId,confirmed)=>uuid(attemptId)&&confirmed===true?
+  scopedOperation(target,'companion.authorizeFinal',{attemptId,confirmed:true},r=>
+    r?.ok===true&&r.status==='pending'?{ok:true,status:'pending'}:r?.ok===false?{ok:false,reason:'authorization-blocked'}:null,true):{ok:false,reason:'invalid-review'};
 async function handle(m,sender){
   if(sender.id!==chrome.runtime.id)return {ok:false,reason:'untrusted-sender'};
   if(m?.type==='companion.observation'){
@@ -81,7 +93,7 @@ async function handle(m,sender){
     const report=D.validate(m.report,originOf(sender.url));
     if(!report)return {ok:false,reason:'invalid-report'};
     await chrome.action.setBadgeText({tabId:sender.tab.id,text:report.status==='recognized'?'●':'?'}).catch(()=>{});
-    await chrome.action.setTitle({tabId:sender.tab.id,title:report.status==='recognized'?'Rewards Companion: recognized (read-only)':'Rewards Companion: diagnostic-only'}).catch(()=>{});
+    await chrome.action.setTitle({tabId:sender.tab.id,title:report.status==='recognized'?'Rewards Companion: recognized':'Rewards Companion: diagnostic-only'}).catch(()=>{});
     return record(report);
   }
   if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
@@ -98,6 +110,9 @@ async function handle(m,sender){
   if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='editCache')return editTab(m.target,m.edit,m.value);
   if(m.op==='reconcileSuccess')return reconcileTab(m.target,m.attemptId);
+  if(m.op==='prepareFinal')return prepareTab(m.target);
+  if(m.op==='cancelFinal')return cancelTab(m.target,m.attemptId);
+  if(m.op==='authorizeFinal')return authorizeTab(m.target,m.attemptId,m.confirmed);
   if(m.op==='exportDiagnostics'){
     const {records}=await diagnostics();
     return {ok:true,export:{schema:'rewards.structural-export/1',records}};

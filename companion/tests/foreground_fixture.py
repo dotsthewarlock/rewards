@@ -35,15 +35,12 @@ window.before=JSON.stringify(Object.entries(localStorage).sort());
 # Fixture-only explicit user controls, not a production message/API.
 BIND = """()=>{
  const target={origin:location.origin,campaign:'CA1126VANW',documentToken:crypto.randomUUID()};
- const campaign={id:target.campaign,origin:target.origin,products:['$100 Vanilla prepaid card'],
-   rewards:['Walmart eGift Card'],merchant:['Walmart'],cents:1500};
  window.contextValid=true;
- window.candidateCampaign=campaign;
  window.fixtureLocks=navigator.locks;
  document.querySelector('#review').addEventListener('click',event=>{
    if(!event.isTrusted)return;
    window.binding?.cancel?.();
-   window.binding=RewardsForeground.prepareFinal(document,localStorage,window.fixtureLocks,target,campaign,()=>window.contextValid);
+   window.binding=RewardsForeground.prepareFinal(document,localStorage,window.fixtureLocks,target,()=>window.contextValid);
    window.reviewStatus=window.binding.ok;
  });
  document.querySelector('#authorize').addEventListener('click',async event=>{
@@ -57,7 +54,7 @@ def exercise_final(page, ctx, root: Path):
     def setup():
         page.goto(URL)
         page.bring_to_front()
-        for script in ("discovery/core.js","discovery/legacy.js","core/transactions.js","discovery/foreground.js"):
+        for script in ("discovery/core.js","discovery/legacy.js","core/registry.js","core/transactions.js","discovery/foreground.js"):
             page.evaluate((root/script).read_text())
         page.evaluate(BIND)
     def untouched():
@@ -67,6 +64,7 @@ def exercise_final(page, ctx, root: Path):
         assert page.evaluate("window.reviewStatus") is expected
         untouched()
     def authorize():
+        page.evaluate("window.outcome=undefined")
         page.locator("#authorize").click()
         page.wait_for_function("window.outcome!==undefined")
         return page.evaluate("window.outcome")
@@ -81,7 +79,7 @@ def exercise_final(page, ctx, root: Path):
         "document.querySelector('#final').insertAdjacentHTML('beforeend','<div role=dialog>Choose a product</div>')",
         "document.querySelector('#final').insertAdjacentHTML('beforeend','<iframe title=\\\"recaptcha challenge\\\" style=\\\"width:100px;height:100px\\\"></iframe>')",
         "document.querySelector('form').action='https://unrelated.invalid/'",
-        "window.candidateCampaign.rewards.push('Other reward')",
+        "document.body.insertAdjacentHTML('beforeend','<main class=\"value-add wizard\"><div class=\"confirmation-block\" hidden><div class=\"codes-container\"></div></div><button class=\"btn-claim-another-code\" hidden>Claim Another</button></main>')",
         "document.querySelector('#final').classList.remove('step_active')",
     ):
         setup()
@@ -125,3 +123,14 @@ def exercise_final(page, ctx, root: Path):
     assert not authorize()["ok"]
     assert page.evaluate("window.submits===1")
     print("Shared foreground adapter: exact review, blockers, cancellation, lock, durable native submit and no replay PASS",flush=True)
+
+def show_linked_success(page):
+    # Same-document synthetic transition; preserve exact durable intent and workspace.
+    page.locator("main.bcr-redemption").evaluate("""(el,code)=>el.outerHTML='<main class="value-add wizard"><section class="redemption-form"><p>Eligible Card: '+code+'</p><div class="confirmation-block"><h3>You earned $15</h3><p class="h5">Walmart eGift Card</p><div class="codes-container"><div class="title">Bonus Code</div><div class="text">000012345678</div><div class="title">PIN</div><div class="text">0000</div></div></div><button class="btn-claim-another-code">Claim Another</button></section></main>'""",CODE)
+
+def assert_final_captured(page):
+    result=page.evaluate("""()=>{const prefix='bs_rewards:CA1126VANW:',get=n=>JSON.parse(localStorage.getItem(prefix+n)||'null');return {active:get('active'),queue:get('queue'),history:get('history'),gifts:get('giftcards'),submits:window.submits}}""")
+    assert result["active"] is None and result["submits"]==1
+    assert [r["state"] for r in result["queue"]]==["complete","queued"]
+    assert len(result["history"])==len(result["gifts"])==1
+    assert result["history"][0]["code"]==result["gifts"][0]["sourceRedemptionCode"]==CODE

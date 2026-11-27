@@ -4,7 +4,8 @@
   const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
   if(window.top!==window||!D.allowedOrigin(location.origin)||globalThis.__rewardsDiscoveryLoaded)return;
   globalThis.__rewardsDiscoveryLoaded=true;
-  let documentToken=crypto.randomUUID();
+  let documentToken=crypto.randomUUID(),prepared=null;
+  const clearPrepared=()=>{prepared?.cancel();prepared=null;};
   let observer=null,timer=null,expiry=null,last='',generation=0,root=null,stopped=false;
   function disconnect(){observer?.disconnect();observer=null;clearTimeout(timer);timer=null;clearTimeout(expiry);expiry=null;root=null;}
   function schedule(){
@@ -43,11 +44,30 @@
     }catch{if(seq===generation)last='';}
   }
   chrome.runtime.onMessage.addListener((m,sender,reply)=>{
-    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess'].includes(m?.type))return;
+    if(sender.id!==chrome.runtime.id||sender.tab||!['companion.inspect','companion.exportRewards','companion.previewImport','companion.editCache','companion.reconcileSuccess','companion.prepareFinal','companion.authorizeFinal','companion.cancelFinal'].includes(m?.type))return;
     const report=D.report(document);
     const recognized=!stopped&&report?.status==='recognized';
     if(m.type!=='companion.inspect'){
       if(!recognized||m.documentToken!==documentToken||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
+      if(m.type==='companion.prepareFinal'){
+        clearPrepared();
+        const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+        const binding=globalThis.RewardsForeground.prepareFinal(document,localStorage,navigator.locks,
+          {origin:m.origin,campaign:m.campaign,documentToken},current);
+        if(!binding.ok)return reply(binding);
+        prepared=binding;
+        return reply({ok:true,review:binding.review});
+      }
+      if(m.type==='companion.cancelFinal'){
+        if(prepared?.review.attemptId===m.attemptId)clearPrepared();
+        return reply({ok:true});
+      }
+      if(m.type==='companion.authorizeFinal'){
+        if(m.confirmed!==true||!prepared||prepared.review.attemptId!==m.attemptId)return reply({ok:false,reason:'review-expired'});
+        const binding=prepared;prepared=null;
+        binding.authorize().then(reply,()=>reply({ok:false,reason:'pending-unknown'}));
+        return true;
+      }
       if(m.type==='companion.exportRewards')return reply(L.exportRows(localStorage,report.campaign));
       if(m.type==='companion.reconcileSuccess'){
         const current=()=>!stopped&&m.documentToken===documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
@@ -56,6 +76,7 @@
         return true;
       }
       if(m.type==='companion.editCache'){
+        clearPrepared();
         // The original v15 overlay is a compatibility warning, not a cooperative lock.
         const current=()=>{
           const now=D.report(document);
@@ -72,7 +93,7 @@
     }
     reply({report,documentToken,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null});
   });
-  window.addEventListener('pagehide',()=>{stopped=true;disconnect();last='';generation++;});
+  window.addEventListener('pagehide',()=>{stopped=true;clearPrepared();disconnect();last='';generation++;});
   window.addEventListener('pageshow',()=>{if(stopped){documentToken=crypto.randomUUID();stopped=false;capture();}});
   capture();
 })();

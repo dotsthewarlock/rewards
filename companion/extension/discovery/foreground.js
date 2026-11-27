@@ -1,20 +1,15 @@
 /* Shared foreground final-form adapter, adapted from v15 DOM/CAP.
  * No auto-fill, guessed choice, hidden value read, navigation or passive invocation.
  * Candidate: call only from an explicit review/authorization lifecycle.
- * The caller supplies canonical campaign metadata, not page-derived choices.
+ * Product/reward metadata comes only from the shared canonical registry.
  */
 (() => {
   'use strict';
-  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions;
+  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns;
   const fail=reason=>({ok:false,reason});
   const label=el=>String(el?.value&&el.matches('input')?el.value:el?.textContent||'').replace(/\s+/g,' ').trim().toUpperCase();
   const one=nodes=>nodes.length===1?nodes[0]:null;
   const visibleNodes=(root,selector)=>[...root.querySelectorAll(selector)].filter(D.visible);
-  function singleChoice(c,target){
-    return c?.id===target.campaign&&c.origin===target.origin&&
-      ['products','rewards','merchant'].every(key=>Array.isArray(c[key])&&c[key].length===1&&typeof c[key][0]==='string')&&
-      Number.isSafeInteger(c.cents)&&c.cents>0;
-  }
   function readFinal(doc,target){
     const id=D.identity(doc);
     if(id?.status!=='recognized'||id.stage!=='entry'||!id.signals.entryVisible||id.signals.success||
@@ -49,9 +44,10 @@
   const same=(a,b)=>!!a&&!!b&&Object.keys(a).every(k=>a[k]===b[k]);
   // Creates one immutable review and one one-shot authorization closure.
   // Construction/inspection never mutates the merchant page or persistent cache.
-  function prepareFinal(doc,storage,locks,target,campaign,contextValid){
+  function prepareFinal(doc,storage,locks,target,contextValid){
     try{
-      if(!target||typeof contextValid!=='function'||!singleChoice(campaign,target)||!contextValid())return fail('unsupported-review');
+      const choice=target&&R.singleChoice(target.campaign,target.origin);
+      if(!choice||typeof contextValid!=='function'||!contextValid())return fail('unsupported-review');
       const initial=readFinal(doc,target);
       if(!initial)return fail('form-not-ready');
       const raw=L.readSnapshot(storage,target.campaign,['queue','active','lock','email']);
@@ -60,8 +56,7 @@
       if(raw.active!==null||raw.lock!==null||queue.some(r=>['pending','processing'].includes(r.state))||
         !row||row.code!==initial.barcode||raw.email!==initial.address)return fail('review-conflict');
       const review=Object.freeze({origin:target.origin,campaign:target.campaign,documentToken:target.documentToken,
-        attemptId:doc.defaultView.crypto.randomUUID(),queueId:row.id,code:row.code,product:campaign.products[0],
-        reward:campaign.rewards[0],cardMerchant:campaign.merchant[0],valueRecent:(campaign.cents/100).toFixed(2),
+        attemptId:doc.defaultView.crypto.randomUUID(),queueId:row.id,code:row.code,...choice,
         email:initial.address,terms:true});
       if(!T.validReview(review))return fail('invalid-review');
       const abort=new AbortController(),options={capture:true,signal:abort.signal};

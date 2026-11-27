@@ -4,7 +4,7 @@ import {esc,button,check} from './components.js';
 // Platform-neutral workspace. The transport owns identity, persistence and authorization.
 export function mountWorkspace(root,request,{recording=true}={}){
 const $=id=>root.getElementById(id);
-let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,inputVersion=0,emailDraft='',editing=false;
+let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,inputVersion=0,emailDraft='',editing=false,reviewed=null;
 const editMessage={
  'context-changed':'Campaign changed or legacy workspace is open. Refresh before editing.',
  'legacy-busy':'Existing pending, active or locked legacy transaction. Resolve it in the existing workflow before editing.',
@@ -23,6 +23,15 @@ function maskedList(rows,index,action,history=false){
  return '<ul class="list">'+items+'</ul>'+(total>1?'<div class="row spread">'+button('Previous',action,{disabled:current===0,extra:'data-value="'+(current-1)+'"'})+'<span>'+(current+1)+'/'+total+'</span>'+button('Next',action,{disabled:current===total-1,extra:'data-value="'+(current+1)+'"'})+'</div>':'');
 }
 const alive=()=>!root.host||root.host.isConnected;
+function discardReview(){
+ const old=reviewed;reviewed=null;
+ if(old)Promise.resolve(request('cancelFinal',{target:old.target,attemptId:old.review.attemptId})).catch(()=>{});
+}
+function finalReviewView(){
+ if(!reviewed)return '';
+ const r=reviewed.review;
+ return '<section class="surface stack review-data"><h3>Review exact claim</h3><p><strong>Product:</strong> '+esc(r.product)+'</p><p><strong>Reward:</strong> '+esc(r.reward)+' · CAD $'+esc(r.valueRecent)+'</p><p><strong>Barcode:</strong> <span class="mono">'+esc(r.code)+'</span></p><p><strong>Email:</strong> '+esc(r.email)+'</p><p>Merchant terms are checked on the page. Confirm that you reviewed them and this is your eligible purchased product.</p>'+check('finalConfirmed','I confirm the exact claim details and merchant terms',reviewed.confirmed,editing)+button('Authorize reviewed claim','authorizeFinal',{primary:true,disabled:editing||!reviewed.confirmed,extra:'data-value="'+esc(r.attemptId)+'"'})+button('Cancel review','cancelFinal',{disabled:editing})+'</section>';
+}
 function render(){
  const focus=root.activeElement;
  const field=['importDraft','emailDraft'].includes(focus?.id)?focus.id:null;
@@ -32,10 +41,13 @@ function render(){
  $('navigation').innerHTML=['queue','rewards','campaigns','settings'].map(x=>button(x[0].toUpperCase()+x.slice(1),'navigate',{extra:'data-value="'+x+'" '+(screen===x?'aria-current="page"':'')})).join('');
  let body='';
  if(screen==='queue'){
-   body='<h2>Queue</h2><p>Legacy cache management. No claim authority is enabled.</p>';
+   body='<h2>Queue</h2><p>Legacy cache management and reviewed foreground claims. Development candidate; live compatibility unverified.</p>';
    if(summary?.ok)body+='<section class="surface"><p>'+summary.queue.queued+' ready · '+summary.queue.complete+' complete · '+summary.queue.pending+' pending</p><p>'+summary.queue.duplicate+' duplicates · '+summary.queue.error+' errors</p><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p>'+(summary.unresolved?'<p class="warning">Existing unresolved or active state. No replay or advancement.</p>':'')+'</section>';
    else if(summary?.ok===false)body+='<p class="warning">Legacy cache could not be safely read. No data changed.</p>';
    if(summary?.ok&&state?.target){
+     if(r?.stage==='entry'&&!summary.unresolved&&summary.queue.queued>0&&summary.emailConfigured&&cp?.products.length===1&&cp.rewards.length===1){
+       body+=reviewed?finalReviewView():'<section class="surface stack"><h3>Review merchant form</h3><p>Complete the native merchant steps and terms, leaving the final form visible. Do not submit separately. Unknown layouts and choices remain blocked.</p>'+button('Review final claim','prepareFinal',{primary:true,disabled:editing||r.controls.submit.actionable!==1})+'</section>';
+     }
      if(r?.stage==='success'&&summary.unresolved&&state.recovery)body+='<section class="surface stack"><h3>Unresolved reward</h3><p>Reviewed attempt ending '+esc(state.recovery.last4)+'. Inspect the matching merchant confirmation before capture. No claim will be submitted or advanced.</p>'+button('Capture matching reward','reconcileSuccess',{primary:true,disabled:editing,extra:'data-value="'+esc(state.recovery.attemptId)+'"'})+'</section>';
      body+='<section class="surface stack"><label for="importDraft">Redemption codes</label><textarea id="importDraft" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="Paste 30-digit codes or receipt text">'+esc(draft)+'</textarea>'+'<div class="row">'+button('Add to queue','addQueue',{primary:true,disabled:editing||summary.unresolved||!draft.trim()})+button('Preview','previewImport',{disabled:editing||!draft.trim()})+'</div><p class="muted">Close other v15 workspaces before editing. Adding codes never submits a claim.</p><p id="importResult" role="status">'+(preview?esc(preview):'')+'</p></section>';
      if(details?.ok)body+='<section class="surface"><h3>Existing queue</h3>'+(details.queue.length?maskedList(details.queue,page,'queuePage'):'<p>No queued records.</p>')+'</section>';
@@ -55,12 +67,13 @@ function render(){
 }
 async function refresh(){
  const n=++serial;
- try{const s=await request('inspect');if(n!==serial||!alive())return;if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
- catch{if(n!==serial||!alive())return;state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
+ try{const s=await request('inspect');if(n!==serial||!alive())return;if(reviewed&&(!sameTarget(reviewed.target,s?.target)||JSON.stringify(state?.report)!==JSON.stringify(s?.report)||JSON.stringify(state?.details)!==JSON.stringify(s?.details)||s?.summary?.unresolved))discardReview();if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
+ catch{if(n!==serial||!alive())return;discardReview();state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
  render();
 }
 async function edit(op,value){
  if(editing||!state?.target||state.summary?.unresolved)return;
+ discardReview();
  const selected=state.target,version=inputVersion;
  editing=true;render();
  let result;
@@ -77,10 +90,36 @@ async function edit(op,value){
 }
 root.addEventListener('click',async e=>{
  const target=e.target.closest('[data-action]');if(!target||target.disabled)return;
- if(target.dataset.action==='navigate'){screen=target.dataset.value;render();$('workspace').focus();}
- if(target.dataset.action==='refresh')await refresh();
+ if(target.dataset.action==='navigate'){discardReview();screen=target.dataset.value;render();$('workspace').focus();}
+ if(target.dataset.action==='refresh'){discardReview();await refresh();}
  if(target.dataset.action==='queuePage'){page=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
+ if(target.dataset.action==='prepareFinal'){
+   if(!e.isTrusted||editing||!state?.target||state.summary?.unresolved)return;
+   discardReview();const selected=state.target,n=serial;
+   editing=true;render();
+   let result;try{result=await request('prepareFinal',{target:selected});}catch{}
+   editing=false;
+   if(!alive()||n!==serial||!sameTarget(selected,state?.target)||screen!=='queue'){
+     if(result?.ok)Promise.resolve(request('cancelFinal',{target:selected,attemptId:result.review.attemptId})).catch(()=>{});
+     if(alive())render();return;
+   }
+   if(result?.ok)reviewed={target:selected,review:result.review,confirmed:false};
+   render();
+   $('announcement').textContent=result?.ok?'Review the exact claim before authorizing.':'Final form not verified. Check the visible barcode, saved email, terms, native controls and any required choices.';
+   return;
+ }
+ if(target.dataset.action==='cancelFinal'){discardReview();render();$('announcement').textContent='Review cancelled. No claim submitted.';return;}
+ if(target.dataset.action==='authorizeFinal'){
+   if(!e.isTrusted||editing||!reviewed?.confirmed||!sameTarget(reviewed.target,state?.target)||target.dataset.value!==reviewed.review.attemptId)return;
+   const selected=reviewed;reviewed=null;editing=true;render();
+   let result;try{result=await request('authorizeFinal',{target:selected.target,attemptId:selected.review.attemptId,confirmed:true});}catch{}
+   editing=false;
+   if(!alive())return;
+   await refresh();if(!alive())return;
+   $('announcement').textContent=result?.ok&&result.status==='pending'?'Submission attempted. Await a verified merchant outcome; do not replay.':'Submission not confirmed. Inspect the merchant page and queue before any new authorization; do not retry an unresolved claim.';
+   return;
+ }
  if(target.dataset.action==='reconcileSuccess'){
    if(editing||!state?.target||state.report?.stage!=='success'||!state.summary?.unresolved||
       !state.recovery||target.dataset.value!==state.recovery.attemptId)return;
@@ -141,7 +180,7 @@ root.addEventListener('input',e=>{
  const control=root.querySelector('[data-action="previewImport"]');if(control)control.disabled=editing||!draft.trim();
  const add=root.querySelector('[data-action="addQueue"]');if(add)add.disabled=editing||!!state?.summary?.unresolved||!draft.trim();
 });
-root.addEventListener('change',async e=>{if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
+root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
 render();refresh();
 return {refresh};
 }
