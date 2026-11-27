@@ -1,0 +1,37 @@
+name: One-time read-only V0.6 package evidence
+on:
+  push:
+    branches: [launcher-package-verification]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify and prepare exact existing package without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          git fetch --no-tags origin main
+          git worktree add --detach "$RUNNER_TEMP/launcher-main" FETCH_HEAD
+          cd "$RUNNER_TEMP/launcher-main"
+          python "$GITHUB_WORKSPACE/companion/launcher/tools/publication.py" prepare --commit de3cb5d394100851e2a4005dc9c1e0420311cc60 --run 46049375697 --checkpoint "Existing accepted V0.6 automated candidate; preserve exact package and source, native/live acceptance pending."
+          python - <<'PY'
+          import base64, pathlib, hashlib
+          folder=pathlib.Path("companion/launcher/releases/0.6.0-dev-de3cb5d39410")
+          package=folder/"rewards-companion-0.6.0-dev-de3cb5d39410-development.zip"
+          data=package.read_bytes()
+          assert hashlib.sha256(data).hexdigest()=="0d698b40f7b32f26261865243d4bdb68ab70b6214a33f17dddfd87eeda3badec"
+          # Public release candidate bytes only; transport to approved repository connector.
+          encoded=base64.b64encode(data).decode()
+          for i in range(0,len(encoded),4096):
+              print("PUBLIC_PACKAGE_CHUNK:"+str(i//4096)+":"+encoded[i:i+4096],flush=True)
+          print("PUBLIC_PACKAGE_END:"+str(len(encoded)),flush=True)
+          PY
