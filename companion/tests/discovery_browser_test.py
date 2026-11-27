@@ -272,7 +272,8 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[stale,attempt_id])["ok"]
         assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,"00000000-0000-0000-0000-000000000099"])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before")
-        assert worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])=={"ok":True,"status":"complete"}
+        result=worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])
+        assert result=={"ok":True,"status":"complete"},result
         assert_captured(page)
         assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])["ok"]
         assert_captured(page)

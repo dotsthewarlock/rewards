@@ -64,7 +64,7 @@
         clearPrepared();
         const current=()=>!stopped&&!!syncContext()&&m.documentToken===epoch.token&&document.visibilityState==='visible'&&!document.getElementById('bsp');
         const binding=globalThis.RewardsForeground.prepareFinal(document,localStorage,navigator.locks,
-          {origin:m.origin,campaign:m.campaign,documentToken},current);
+          {origin:m.origin,campaign:m.campaign,documentToken:m.documentToken},current);
         if(!binding.ok)return reply(binding);
         prepared=binding;
         return reply({ok:true,review:binding.review});
@@ -84,7 +84,7 @@
       if(m.type===W.contentType('reconcileSuccess')){
         const current=()=>!stopped&&!!syncContext()&&m.documentToken===epoch.token&&document.visibilityState==='visible'&&!document.getElementById('bsp');
         globalThis.RewardsSuccess.reconcileVisible(document,localStorage,navigator.locks,
-          {origin:m.origin,campaign:m.campaign,documentToken},m.attemptId,current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
+          {origin:m.origin,campaign:m.campaign,documentToken:m.documentToken},m.attemptId,current).then(reply,()=>reply({ok:false,reason:'reconciliation-blocked'}));
         return true;
       }
       if(m.type===W.contentType('editCache')){
