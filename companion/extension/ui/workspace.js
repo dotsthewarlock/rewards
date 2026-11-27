@@ -233,7 +233,9 @@ root.addEventListener('input',e=>{
  const add=root.querySelector('[data-action="addQueue"]');if(add)add.disabled=editing||!!state?.summary?.unresolved||!draft.trim();
 });
 root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&hideReward()&&alive())render();});
+const visibility=()=>{if(document.hidden&&hideReward()&&alive())render();};
+document.addEventListener('visibilitychange',visibility);
+root.host?.addEventListener('rewards-companion-close',()=>{hideReward();document.removeEventListener('visibilitychange',visibility);},{once:true});
 render();refresh();
 return {refresh};
 }

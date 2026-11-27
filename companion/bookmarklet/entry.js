@@ -12,13 +12,13 @@ function launchBookmarklet(markup,css){
  style.textContent=css;
  const shell=document.createElement('div');shell.className='shell';shell.innerHTML=markup;
  const close=document.createElement('button');close.type='button';close.textContent='Close workspace';
- close.addEventListener('click',()=>host.remove());shell.prepend(close);
+ close.addEventListener('click',()=>{host.dispatchEvent(new Event('rewards-companion-close'));host.remove();});shell.prepend(close);
  root.append(style,shell);document.body.append(host);
  const documentToken=crypto.randomUUID();let prepared=null;
  const clearPrepared=()=>{prepared?.cancel();prepared=null;};
  host.addEventListener('rewards-companion-close',clearPrepared);
  close.addEventListener('click',clearPrepared);
- window.addEventListener('pagehide',()=>{clearPrepared();host.remove();},{once:true});
+ window.addEventListener('pagehide',()=>{host.dispatchEvent(new Event('rewards-companion-close'));host.remove();},{once:true});
  const inspect=()=>{
    const report=D.report(document),recognized=report?.status==='recognized';
    const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken}:null;
