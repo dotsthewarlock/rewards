@@ -1,0 +1,39 @@
+name: Launcher verification
+on:
+  push:
+    branches: [launcher-dev, companion-dev, main]
+    paths: ['companion/launcher/**', 'companion/tests/launcher_browser_test.py', 'companion/tests/launcher_publication_test.py', '.github/workflows/launcher-browser.yml']
+permissions:
+  contents: read
+jobs:
+  launcher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check companion/launcher/loader.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python companion/tests/launcher_publication_test.py
+      - run: python -m pip install playwright==1.51.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python companion/tests/launcher_browser_test.py
+  hosted:
+    if: github.ref == 'refs/heads/main'
+    needs: launcher
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python companion/launcher/tools/publication.py verify --wait 300
