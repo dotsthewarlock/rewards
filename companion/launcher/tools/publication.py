@@ -232,7 +232,7 @@ def verify_entry(c, grade):
 
 def verify(repo,wait):
     current=manifest(repo)
-    paths=[BASE+"index.html",BASE+"bootstrap.txt",BASE+"loader.js",BASE+"channels.json",STABLE["path"],
+    paths=["index.html",BASE+"index.html",BASE+"bootstrap.txt",BASE+"loader.js",BASE+"channels.json",STABLE["path"],
            "redeem/Redeem_Prepaid_Rewards.js","redeem/Redeem_Prepaid_Rewards_loader.txt"]
     for name in ("dev","test"):
         c=current.get(name)

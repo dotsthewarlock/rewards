@@ -32,15 +32,20 @@ with sync_playwright() as p:
     page=browser.new_page(viewport={"width":320,"height":480})
     page.set_default_timeout(10000)
     page.set_default_navigation_timeout(10000)
-    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors"])
+    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview explicit Open","change then cancel preserves preference","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular explicit Open","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation"])
     scenario_count=0
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
-    def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False):
+    def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False,retain=False,stored=None,blocked=False):
         global scenario_count
         scenario_count+=1
         print(f"START {scenario_count}: {next(scenarios)}",flush=True)
         page.goto("https://fixture.invalid/")
-        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource])=>{
+        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource,retain,stored,blocked])=>{
+          const key='rewards.companion.launcher.preference.v1';
+          if(!retain)localStorage.removeItem(key);
+          if(stored!==null)localStorage.setItem(key,stored);
+          if(blocked){const get=Storage.prototype.getItem,set=Storage.prototype.setItem;Storage.prototype.getItem=function(k){if(k===key)throw Error('blocked');return get.call(this,k);};Storage.prototype.setItem=function(k,v){if(k===key)throw Error('blocked');return set.call(this,k,v);};}
+          window.fixtureManifest=m;
           window.launches=0;window.calls=[];window.errors=[];window.fail=fail;window.manifestFail=manifestFail;
           window.alert=s=>errors.push(s);
           // Positive Stable test checks real bytes and the exact final invocation;
@@ -50,21 +55,21 @@ with sync_playwright() as p:
           window.fetch=async(url,o)=>{calls.push(url);
             if(o.cache!=='no-store'||o.credentials!=='omit'||o.redirect!=='error'||o.referrerPolicy!=='no-referrer')throw Error('unsafe fetch');
             if(url===root+base+'loader.js')return new Response(loader);
-            if(url===root+base+'channels.json'){if(window.manifestFail)throw Error('offline');return new Response(JSON.stringify(m));}
+            if(url===root+base+'channels.json'){if(window.manifestFail)throw Error('offline');return new Response(JSON.stringify(window.fixtureManifest));}
             if(delay)await new Promise(r=>setTimeout(r,400));
             if(window.fail)throw Error('offline');return new Response(body);
           };
           document.querySelector('#original').focus();
           window.run=()=> (0,eval)(bootstrap);window.run();
-        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base,stable_positive,stable_source])
+        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base,stable_positive,stable_source,retain,stored,blocked])
     def button(name):return page.get_by_role("button",name=name,exact=True)
     def gone():
         page.get_by_role("dialog").wait_for(state="detached")
         page.wait_for_function("!window[Symbol.for('rewards.companion.launcher')]")
     def check(n):assert page.evaluate("launches")==n
     def ready():
-        button("Stable · v15").wait_for()
-        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Stable · v15'")
+        button("Open Regular · v15").wait_for()
+        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Open Regular · v15'")
     started=time.perf_counter()
     setup();ready()
     print(f"Synthetic navigation-to-ready: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
@@ -73,20 +78,20 @@ with sync_playwright() as p:
     page.evaluate("() => { void window.run(); }");assert page.get_by_role("dialog").count()==1
     assert len(page.evaluate("calls"))==2
     page.keyboard.press("Escape");gone();assert page.evaluate("document.activeElement.id")=="original";check(0)
-    setup();button("Preview · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
-    setup(body="window.launches=99");button("Preview · 0.6.0").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
-    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("() => { void window.run(); }");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
+    setup();button("Open Preview · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
+    setup(body="window.launches=99");button("Open Preview · 0.6.0").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
+    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("() => { void window.run(); }");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
     setup(busy=True);page.wait_for_function("calls.length===1&&!window[Symbol.for('rewards.companion.launcher')]");assert page.evaluate("errors.length")==0;check(0)
-    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
-    setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
+    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
+    setup(fail=True);button("Open Preview · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     setup(manifest_fail=True);button("Retry").wait_for();page.evaluate("window.manifestFail=false");button("Retry").click();ready();button("Cancel").click();gone()
     setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Preview unavailable").wait_for();assert button("Preview unavailable").is_disabled();button("Cancel").click();gone()
-    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Could not find available versions. Nothing opened.").wait_for();assert button("Stable").is_disabled();button("Cancel").click();gone()
-    setup();button("Stable · v15").click();page.get_by_text("Could not safely check",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
+    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Could not find available versions. Nothing opened.").wait_for();assert button("Open Regular").is_disabled();button("Cancel").click();gone()
+    setup();button("Open Regular · v15").click();page.get_by_text("Could not safely check",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
     setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("More testing options").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
     setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("More testing options").is_visible();button("Cancel").click();gone()
-    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
+    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
     page.emulate_media(color_scheme="dark");setup();ready();assert page.get_by_role("dialog").evaluate("(e)=>getComputedStyle(e).backgroundColor")=="rgb(33, 35, 43)";page.keyboard.press("Escape");gone()
     # Targeted UX/lifecycle regressions, preserving the original scenarios.
     page.emulate_media(color_scheme="light")
@@ -103,10 +108,10 @@ with sync_playwright() as p:
     assert page.get_by_text("Reports are public",exact=False).is_visible()
     assert len(page.evaluate("calls"))==2
     page.get_by_text("Help & version details",exact=True).click()
-    button("Stable · v15").focus()
+    button("Open Regular · v15").focus()
     assert page.get_by_role("status").inner_text()=="Choose a version."
-    page.keyboard.press("Tab");assert button("Preview · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
-    page.keyboard.press("Shift+Tab");assert button("Stable · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.keyboard.press("Tab");assert button("Open Preview · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.keyboard.press("Shift+Tab");assert button("Open Regular · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Escape");gone();check(0)
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});ready()
     page.get_by_text("More testing options").click()
@@ -115,7 +120,7 @@ with sync_playwright() as p:
     assert page.get_by_text(entry("test")["version"],exact=False).is_visible()
     assert page.get_by_text("More testing options").evaluate("(e)=>getComputedStyle(e).display")=="list-item"
     page.keyboard.press("Escape");gone()
-    setup(delay=True);button("Preview · 0.6.0").click()
+    setup(delay=True);button("Open Preview · 0.6.0").click()
     assert page.get_by_role("status").inner_text()=="Opening Preview..."
     button("Cancel").click();gone()
     # A fresh bootstrap promise stays pending until the dialog closes. Do not
@@ -129,7 +134,7 @@ with sync_playwright() as p:
     started=time.perf_counter()
     page.keyboard.press("Escape");gone();page.wait_for_function("reinvokeSettled===true")
     print(f"Synthetic Escape-to-bootstrap-settled: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
-    setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for()
+    setup(fail=True);button("Open Preview · 0.6.0").click();button("Retry").wait_for()
     assert page.get_by_role("status").inner_text().startswith("Could not download Preview.")
     assert not page.get_by_text("Check failed: download (Preview).",exact=True).is_visible()
     page.get_by_text("Help & version details",exact=True).click()
@@ -139,7 +144,7 @@ with sync_playwright() as p:
     page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     focus_source="window.launches++;const b=document.createElement('button');b.id='launched-focus';document.body.append(b);b.focus();"
     focus_manifest={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(focus_source.encode()).hexdigest()}}
-    setup(m=focus_manifest,body=focus_source);button("Preview · 0.6.0").click();gone()
+    setup(m=focus_manifest,body=focus_source);button("Open Preview · 0.6.0").click();gone()
     assert page.evaluate("document.activeElement.id")=="launched-focus"
     for width in (320,360,400,480):
         page.set_viewport_size({"width":width,"height":480})
@@ -147,7 +152,7 @@ with sync_playwright() as p:
         dialog=page.get_by_role("dialog")
         assert dialog.bounding_box()["width"]<=width
         assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
-        assert button("Stable · v15").bounding_box()["height"]>=48
+        assert button("Open Regular · v15").bounding_box()["height"]>=48
         assert button("Cancel").bounding_box()["height"]>=48
         page.get_by_text("Help & version details",exact=True).click()
         assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
@@ -155,10 +160,67 @@ with sync_playwright() as p:
         page.keyboard.press("Escape");gone()
     page.set_viewport_size({"width":320,"height":480})
     page.emulate_media(forced_colors="active");setup();ready()
-    assert button("Stable · v15").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
+    assert button("Open Regular · v15").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
     page.keyboard.press("Escape");gone()
     page.emulate_media(forced_colors="none")
-    assert scenario_count==26 and next(scenarios,None) is None
+    key="rewards.companion.launcher.preference.v1"
+    remembered_dev=json.dumps(dict(schema=1,channel="dev",version=manifest["dev"]["version"],sha256=manifest["dev"]["sha256"]))
+    def saved():return page.evaluate("(key)=>localStorage.getItem(key)",key)
+    def pref():return json.loads(saved()) if saved() else None
+    def preview_ready():
+        button("Open Preview · 0.6.0").wait_for()
+        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Open Preview · 0.6.0'")
+    setup();ready();assert saved() is None
+    button("Open Preview · 0.6.0").click();gone();check(1)
+    assert pref()==json.loads(remembered_dev)
+    setup(retain=True);preview_ready();assert button("Open Regular · v15").count()==0
+    assert len(page.evaluate("calls"))==2;check(0)
+    button("Open Preview · 0.6.0").click();gone();check(1)
+    setup(retain=True);preview_ready();button("Change version").click();ready()
+    assert button("Open Preview · 0.6.0").is_visible()
+    button("Cancel").click();gone();assert pref()==json.loads(remembered_dev);check(0)
+    changed={**manifest,"dev":{**manifest["dev"],"version":"0.6.0-dev-abcdef012345","path":base+"releases/0.6.0-dev-abcdef012345.js"}}
+    setup(m=changed,retain=True);preview_ready()
+    assert "different Preview build" in page.get_by_role("status").inner_text()
+    assert page.get_by_text(changed["dev"]["version"],exact=False).is_visible()
+    assert pref()==json.loads(remembered_dev);check(0);button("Open Preview · 0.6.0").click();gone();check(1)
+    assert pref()["version"]==changed["dev"]["version"]
+    setup(m={"schema":1,"stable":stable},retain=True);ready()
+    assert "preferred version is unavailable" in page.get_by_role("status").inner_text()
+    assert button("Preview unavailable").is_disabled();check(0);button("Cancel").click();gone()
+    assert pref()["version"]==changed["dev"]["version"]
+    setup(stored='{"schema":1,"channel":"dev","version":"javascript:wrong","sha256":"bad"}');ready()
+    assert button("Open Preview · 0.6.0").is_visible();check(0);button("Cancel").click();gone()
+    setup(blocked=True,stored=remembered_dev);ready()
+    button("Open Preview · 0.6.0").click();gone();check(1)
+    setup(stored=remembered_dev,body="window.launches=99");preview_ready()
+    button("Open Preview · 0.6.0").click();button("Retry").wait_for();check(0)
+    assert pref()==json.loads(remembered_dev);button("Cancel").click();gone()
+    setup(stored=remembered_dev,m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}})
+    preview_ready();assert not page.get_by_text("More testing options").is_visible()
+    button("Change version").click();page.get_by_text("More testing options").click()
+    button("Test · 0.6.0").click();gone();check(1);assert pref()==json.loads(remembered_dev)
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    page.evaluate("(value)=>{window.fixtureManifest=value;window.fail=false;}",changed)
+    button("Retry").click();page.get_by_text("The selected version changed or is unavailable.",exact=False).wait_for()
+    assert button("Open Regular · v15").is_visible();check(0);assert pref()==json.loads(remembered_dev)
+    assert page.evaluate("calls.length")==4
+    button("Cancel").click();gone()
+    setup(body=stable_source,stable_positive=True);ready();button("Open Regular · v15").click();gone();check(1)
+    assert pref()["channel"]=="stable" and pref()["sha256"]==stable["sha256"]
+    setup(retain=True);ready();assert button("Open Preview · 0.6.0").count()==0;check(0)
+    button("Cancel").click();gone();assert pref()["channel"]=="stable"
+    setup(stored=remembered_dev,delay=True);preview_ready();button("Change version").click();ready()
+    button("Open Regular · v15").click();button("Cancel").click();gone();page.wait_for_timeout(500);check(0)
+    assert pref()==json.loads(remembered_dev)
+    setup(stored="x"*257);ready();check(0);button("Cancel").click();gone()
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    page.evaluate("window.fail=false");button("Retry").click();gone();check(1)
+    assert page.evaluate("calls").count(root+base+"channels.json")==2
+    setup(retain=True);preview_ready();button("Cancel").click();gone()
+    isolated=browser.new_page();isolated.route("**/*",lambda route:route.fulfill(content_type="text/html",body="<p>Other origin</p>") if route.request.url=="https://other.invalid/" else route.abort())
+    isolated.goto("https://other.invalid/");assert isolated.evaluate("(key)=>localStorage.getItem(key)",key) is None;isolated.close()
+    assert scenario_count==42 and next(scenarios,None) is None
     # Distribution page is read-only; all requests remain synthetic.
     print("Distribution page: current, missing, invalid, offline and retry",flush=True)
     distribution=browser.new_page(viewport={"width":320,"height":480})
@@ -205,6 +267,16 @@ with sync_playwright() as p:
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
     distribution.close()
     print("Distribution page scenarios PASS",flush=True)
+    print("Homepage discoverability",flush=True)
+    homepage=browser.new_page(viewport={"width":320,"height":480})
+    homepage.route("**/*",lambda route:route.fulfill(content_type="text/html",body=(project.parent/"index.html").read_text()) if route.request.url==root else route.abort())
+    homepage.goto(root)
+    assert homepage.get_by_role("link",name="Get Rewards Companion").get_attribute("href")=="companion/launcher/"
+    assert homepage.get_by_role("link",name="Bookmarklet launcher").is_visible()
+    assert homepage.locator("#options tr").count()==48
+    homepage.locator("#search").fill("Amazon");assert homepage.locator("#count").inner_text()=="0 of 48 merchants"
+    homepage.close()
+    print("Homepage discoverability PASS",flush=True)
     browser.close()
 faulthandler.cancel_dump_traceback_later()
-print("26 synthetic scenario executions PASS",flush=True)
+print("42 synthetic scenario executions PASS",flush=True)
