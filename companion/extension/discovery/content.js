@@ -60,6 +60,13 @@
     if(recognized)bind(id);
     if(m.type!==W.contentType('inspect')){
       if(!recognized||m.documentToken!==epoch.token||m.campaign!==report.campaign||m.origin!==report.origin)return reply({ok:false,reason:'context-changed'});
+      if(m.type===W.contentType('prepareNext')){
+        clearPrepared();
+        const current=()=>!stopped&&!!syncContext()&&m.documentToken===epoch.token&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+        globalThis.RewardsForeground.prepareNext(document,localStorage,navigator.locks,
+          {origin:m.origin,campaign:m.campaign,documentToken:m.documentToken},current).then(reply,()=>reply({ok:false,reason:'fields-unverified'}));
+        return true;
+      }
       if(m.type===W.contentType('prepareFinal')){
         clearPrepared();
         const current=()=>!stopped&&!!syncContext()&&m.documentToken===epoch.token&&document.visibilityState==='visible'&&!document.getElementById('bsp');

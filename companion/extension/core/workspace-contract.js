@@ -6,7 +6,7 @@
  const workspaceType='companion.workspace',observationType='companion.observation';
  const content=Object.freeze({inspect:'companion.inspect',revealReward:'companion.revealReward',exportRewards:'companion.exportRewards',
   previewImport:'companion.previewImport',editCache:'companion.editCache',reconcileSuccess:'companion.reconcileSuccess',
-  prepareFinal:'companion.prepareFinal',authorizeFinal:'companion.authorizeFinal',cancelFinal:'companion.cancelFinal'});
+  prepareNext:'companion.prepareNext',prepareFinal:'companion.prepareFinal',authorizeFinal:'companion.authorizeFinal',cancelFinal:'companion.cancelFinal'});
  const scoped=Object.freeze(Object.keys(content).filter(op=>op!=='inspect'));
  const extensionOnly=Object.freeze(['getCatalog','refreshCatalog','setDiagnostics','captureDiagnostics']);
  const operations=Object.freeze([...Object.keys(content),...extensionOnly,'exportDiagnostics']);

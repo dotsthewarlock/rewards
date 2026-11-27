@@ -32,6 +32,11 @@ function launchBookmarklet(markup,css){
    if(W.isScoped(op)){
      const t=fields.target,c=current.target;
      if(!W.sameTarget(t,c))return {ok:false,reason:'context-changed'};
+     if(op==='prepareNext'){
+       clearPrepared();
+       const valid=()=>host.isConnected&&!!syncContext()&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');
+       return globalThis.RewardsForeground.prepareNext(document,localStorage,navigator.locks,c,valid);
+     }
      if(op==='prepareFinal'){
        clearPrepared();
        const valid=()=>host.isConnected&&!!syncContext()&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp');

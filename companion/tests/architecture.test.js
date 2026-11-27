@@ -52,7 +52,7 @@ test('native module imports and classic provider dependencies are local, acyclic
 });
 test('shared command contract preserves operation names, exact target equality and platform capability distinctions',()=>{
  const W=globalThis.RewardsWorkspaceContract;
- assert.deepEqual(W.operations,['inspect','revealReward','exportRewards','previewImport','editCache','reconcileSuccess','prepareFinal','authorizeFinal','cancelFinal','getCatalog','refreshCatalog','setDiagnostics','captureDiagnostics','exportDiagnostics']);
+ assert.deepEqual(W.operations,['inspect','revealReward','exportRewards','previewImport','editCache','reconcileSuccess','prepareNext','prepareFinal','authorizeFinal','cancelFinal','getCatalog','refreshCatalog','setDiagnostics','captureDiagnostics','exportDiagnostics']);
  for(const op of W.operations){
   assert.ok(W.has(op));assert.equal(W.message(op,{type:'unexpected',op:'unexpected'}).type,'companion.workspace');
   assert.equal(W.message(op,{type:'unexpected',op:'unexpected'}).op,op);

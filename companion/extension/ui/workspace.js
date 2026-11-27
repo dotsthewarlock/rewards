@@ -97,6 +97,25 @@ root.addEventListener('click',async e=>{
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='rewardPage'){hideReward();rewardPage=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='browseTab'){hideReward();browseTab=target.dataset.value;browseSearch='';rewardPage=0;historyPage=0;render();}
+ if(target.dataset.action==='prepareNext'){
+   if(!e.isTrusted||editing||!state?.target||state.summary?.unresolved||screen!=='queue')return;
+   discardReview();const selected=state.target;
+   editing=true;render();
+   let result;try{result=await request('prepareNext',{target:selected});}catch{}
+   editing=false;if(!alive())return;
+   await refresh();if(!alive()||screen!=='queue')return;
+   const message={'manual-stage':'Complete the current merchant step manually, then use Prepare next redemption again.',
+     'field-conflict':'A visible field differs from the next ready code or saved email. Nothing overwritten; inspect the page.',
+     'queue-not-ready':'Next ready item or saved email could not be verified. Inspect the queue and Settings.',
+     'legacy-busy':'An existing attempt or lock is present. Do not retry or switch versions.',
+     'fields-blocked':'Fields or merchant stage are not safely supported. Complete merchant steps manually; stop on a challenge or error.',
+     'edit-busy':'Another Companion operation is active. Inspect before retrying.',
+     'lock-unavailable':'Safe ownership is unavailable; no field assistance performed.'};
+   $('announcement').textContent=result?.ok&&sameTarget(selected,state?.target)?
+     (result.barcode&&result.email?'Barcode and email ready.':result.barcode?'Barcode ready.':'Email ready.')+' Check the merchant page and continue manually; nothing submitted.':
+     (message[result?.reason]||'Field preparation not confirmed. Inspect the current merchant page before any further action.');
+   return;
+ }
  if(target.dataset.action==='prepareFinal'){
    if(!e.isTrusted||editing||!state?.target||state.summary?.unresolved)return;
    discardReview();const selected=state.target,n=serial;

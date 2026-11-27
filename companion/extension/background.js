@@ -123,6 +123,12 @@ function validatePrepared(result,target){
     r.documentToken!==target.documentToken||Object.keys(choice).some(k=>r[k]!==choice[k]))return null;
   return {ok:true,review:T.exactReview(r)};
 }
+const preparationReasons=['context-changed','lock-unavailable','edit-busy','legacy-busy','queue-not-ready','fields-blocked','manual-stage','field-conflict','fields-unverified'];
+const prepareNextTab=target=>scopedOperation(target,W.contentType('prepareNext'),{},r=>{
+  if(r?.ok===false&&Object.keys(r).length===2&&preparationReasons.includes(r.reason))return {ok:false,reason:r.reason};
+  if(r?.ok===true&&Object.keys(r).length===3&&typeof r.barcode==='boolean'&&typeof r.email==='boolean'&&(r.barcode||r.email))return {ok:true,barcode:r.barcode,email:r.email};
+  return null;
+});
 const prepareTab=target=>scopedOperation(target,W.contentType('prepareFinal'),{},result=>validatePrepared(result,target));
 const cancelTab=(target,attemptId)=>uuid(attemptId)?scopedOperation(target,W.contentType('cancelFinal'),{attemptId},r=>r?.ok===true?{ok:true}:null):{ok:false};
 const authorizeTab=(target,attemptId,confirmed)=>uuid(attemptId)&&confirmed===true?
@@ -172,6 +178,7 @@ async function handle(m,sender){
   if(m.op==='previewImport')return previewTab(m.target,m.text);
   if(m.op==='editCache')return editTab(m.target,m.edit,m.value);
   if(m.op==='reconcileSuccess')return reconcileTab(m.target,m.attemptId);
+  if(m.op==='prepareNext')return prepareNextTab(m.target);
   if(m.op==='prepareFinal')return prepareTab(m.target);
   if(m.op==='cancelFinal')return cancelTab(m.target,m.attemptId);
   if(m.op==='authorizeFinal')return authorizeTab(m.target,m.attemptId,m.confirmed);

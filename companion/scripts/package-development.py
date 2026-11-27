@@ -19,7 +19,10 @@ def git(*args):
 def protected(ref):
     return [line for line in git("ls-tree","-r",ref).splitlines()
             if not line.split(b"\t",1)[1].startswith((b"companion/",b"companion-preview/",b".github/"))]
-assert protected("HEAD")==protected(baseline),"production/rollback tree differs"
+# D2 approved homepage discovery is the sole protected-tree difference.
+homepage_baseline="f9d3ee61616a3680b3cb3083bd9501b4c92e8793"
+assert git("rev-parse","HEAD:index.html")==git("rev-parse",homepage_baseline+":index.html"),"approved homepage differs"
+assert [p for p in protected("HEAD") if not p.endswith(b"\tindex.html")]==[p for p in protected(baseline) if not p.endswith(b"\tindex.html")],"production/rollback tree differs"
 manifest=json.loads((src/"manifest.json").read_text())
 files={"manifest.json",manifest["background"]["service_worker"],manifest["side_panel"]["default_path"],
        *manifest["icons"].values(),*manifest["action"]["default_icon"].values(),

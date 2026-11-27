@@ -8,6 +8,7 @@ Both production surfaces use `mountWorkspace(root, request, options)` and the sh
 | exportRewards | target | ok, rows (four exact fields) |
 | previewImport | target, text | ok, queued, duplicates, overflow, recognized |
 | editCache | target, edit, value | ok; queue counts for import |
+| prepareNext | target | ok, barcode/email booleans (supported visible fields verified; no cache write or submission) |
 | prepareFinal | target | ok, review (exact current binding) |
 | authorizeFinal | target, attemptId, confirmed | ok, status pending (attempted, not verified) |
 | cancelFinal | target, attemptId | ok |

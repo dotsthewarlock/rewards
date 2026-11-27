@@ -97,5 +97,70 @@
       return {ok:true,review,authorize,cancel};
     }catch{return fail('review-unavailable');}
   }
-  globalThis.RewardsForeground=Object.freeze({prepareFinal});
+  // Explicit, local field assistance only. Never click, submit, select, accept terms,
+  // read hidden values, write cache, or establish final authorization.
+  function assistanceFields(doc,target){
+    const id=D.identity(doc);
+    if(id?.status!=='recognized'||id.stage!=='entry'||!id.signals.entryVisible||id.signals.success||
+       id.origin!==target.origin||id.campaign!==target.campaign||doc.visibilityState!=='visible'||doc.getElementById('bsp'))return null;
+    if(visibleNodes(doc,'iframe[src*="/recaptcha/api2/bframe"],iframe[title*="recaptcha challenge" i],[role="dialog"],[aria-modal="true"],dialog[open],.modal.show').length||
+       visibleNodes(id.root,'#target_errors,.form-error-inner').some(n=>n.textContent.trim()))return null;
+    const form=one(visibleNodes(id.root,'form#new_workflow_data'));
+    if(!form||form.method.toLowerCase()!=='post'||form.noValidate||!['','_self'].includes(form.target)||
+       new URL(form.action,doc.location.href).origin!==target.origin)return null;
+    const step=one(visibleNodes(form,'.step_active'));
+    if(!step)return null;
+    const active=el=>D.visible(el)&&el.form===form&&(!el.closest('.step')||el.closest('.step')===step);
+    const group=selector=>[...form.querySelectorAll(selector)].filter(active);
+    const code=group('#target_codes .serial-number_wrapper input:not([type="hidden"]),#target_codes input:not([type="hidden"]),input.wizard-serial-number');
+    const email=group('input#workflow_data_email,input[name="workflow_data[email]"]');
+    const confirm=group('input#workflow_data_email_confirmation,input[name="workflow_data[email_confirmation]"]');
+    if(code.length>1||email.length>1||confirm.length>1||email.length!==confirm.length)return null;
+    const fields=[...code.map(el=>({el,kind:'barcode'})),...email.map(el=>({el,kind:'email'})),...confirm.map(el=>({el,kind:'email'}))];
+    if(new Set(fields.map(f=>f.el)).size!==fields.length||fields.some(({el,kind})=>
+       !D.actionable(el)||!el.name||[...form.elements].filter(n=>n.name===el.name).length!==1||
+       !(kind==='barcode'?['text','tel']:['text','email']).includes(el.type)))return null;
+    return {root:id.root,form,step,fields};
+  }
+  async function prepareNext(doc,storage,locks,target,contextValid){
+    if(!target||!R.singleChoice(target.campaign,target.origin)||typeof contextValid!=='function'||!contextValid())return fail('context-changed');
+    if(!locks||typeof locks.request!=='function')return fail('lock-unavailable');
+    let touched=false;
+    try{
+      return await locks.request(L.editLock,{mode:'exclusive',ifAvailable:true},async lock=>{
+        if(!lock)return fail('edit-busy');
+        if(!contextValid())return fail('context-changed');
+        const raw=L.readSnapshot(storage,target.campaign,['queue','history','active','lock','email']);
+        const queue=L.decodeRows(raw.queue),row=queue.find(r=>r.state==='queued'),email=L.normalizedEmail(raw.email);
+        if(raw.active!==null||raw.lock!==null||queue.some(r=>['pending','processing'].includes(r.state)))return fail('legacy-busy');
+        if(!row||!L.barcode(row.code)||typeof row.id!=='string'||!row.id||!email||email!==raw.email||
+           queue.some(r=>r!==row&&(r.code===row.code&&r.state!=='duplicate'&&r.state!=='error'||r.id===row.id))||
+           await L.historyMatcher(L.decodeRows(raw.history))(row.code))return fail('queue-not-ready');
+        if(!contextValid()||!L.unchanged(storage,target.campaign,raw))return fail('context-changed');
+        const plan=assistanceFields(doc,target);
+        if(!plan)return fail('fields-blocked');
+        if(!plan.fields.length)return fail('manual-stage');
+        const value=f=>f.kind==='barcode'?row.code:email;
+        if(plan.fields.some(f=>f.el.value!==''&&f.el.value!==value(f)))return fail('field-conflict');
+        const sameFields=()=>{const now=assistanceFields(doc,target);return contextValid()&&L.unchanged(storage,target.campaign,raw)&&
+          now&&now.root===plan.root&&now.form===plan.form&&now.step===plan.step&&now.fields.length===plan.fields.length&&
+          now.fields.every((f,i)=>f.el===plan.fields[i].el&&f.kind===plan.fields[i].kind&&
+            (f.el.value===''||f.el.value===value(f)));};
+        for(const f of plan.fields){
+          if(!sameFields())return fail(touched?'fields-unverified':'context-changed');
+          if(f.el.value===value(f))continue;
+          touched=true;
+          const view=doc.defaultView;
+          Object.getOwnPropertyDescriptor(view.HTMLInputElement.prototype,'value').set.call(f.el,value(f));
+          f.el.dispatchEvent(new view.Event('input',{bubbles:true}));
+          if(!sameFields()||f.el.value!==value(f))return fail('fields-unverified');
+          f.el.dispatchEvent(new view.Event('change',{bubbles:true}));
+          if(!sameFields()||f.el.value!==value(f))return fail('fields-unverified');
+        }
+        if(!sameFields()||plan.fields.some(f=>f.el.value!==value(f)))return fail('fields-unverified');
+        return {ok:true,barcode:plan.fields.some(f=>f.kind==='barcode'),email:plan.fields.some(f=>f.kind==='email')};
+      });
+    }catch{return fail(touched?'fields-unverified':'fields-blocked');}
+  }
+  globalThis.RewardsForeground=Object.freeze({prepareFinal,prepareNext});
 })();
