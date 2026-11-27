@@ -7,7 +7,7 @@ const $=id=>root.getElementById(id);
 let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,inputVersion=0,emailDraft='',editing=false,reviewed=null;
 const editMessage={
  'context-changed':'Campaign changed or legacy workspace is open. Refresh before editing.',
- 'legacy-busy':'Existing pending, active or locked legacy transaction. Resolve it in the existing workflow before editing.',
+ 'legacy-busy':'Existing pending, active or locked state. Inspect it before editing. Do not retry an unresolved claim or open legacy v15 while a new attempt is unresolved.',
  'edit-busy':'Another companion edit is in progress. Refresh before retrying.',
  'lock-unavailable':'Safe storage ownership is unavailable in this browser.',
  'invalid-input':'Check the entered value.',
