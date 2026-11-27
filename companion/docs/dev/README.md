@@ -43,3 +43,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.3/M1 catalog architect review (2026-11-27)](2026-11-27_V0.3_M1_review.md): verified synthetic checkpoint; targeted parser, restriction precedence and stale-state corrections before scheduling.
 
 - [V0.3/M1 catalog hardening developer checkpoint (2026-11-27)](2026-11-27_V0.3_M1_hardening.md): parser ambiguity, restriction precedence, rate-limit distinction, stale intent and persistence verification.
+
+- [V0.3/M1 hardening architect review (2026-11-27)](2026-11-27_V0.3_M1_hardening-review.md): synthetic corrections accepted, native evidence outstanding, isolated M2 planning gate.
