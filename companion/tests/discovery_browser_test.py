@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright
 from claim_fixture import CODE, URL, success_fixture, assert_captured
+from foreground_fixture import exercise_final
 root=Path(__file__).resolve().parents[1]/"extension"
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
@@ -127,4 +128,5 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("([t,a])=>reconcileTab(t,a)",[target,attempt_id])["ok"]
         assert_captured(page)
         print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
+        exercise_final(page,ctx,root)
     finally:ctx.close()
