@@ -182,6 +182,9 @@ def activate(args):
             "Same-version publication must preserve exact source")
     for path,expected in FROZEN.items():hosted(path,expected)
     hosted(BASE+"channels.json",digest((repo/(BASE+"channels.json")).read_bytes()))
+    previous=current["dev"]
+    hosted(previous["path"],previous["sha256"])
+    if previous.get("package"):hosted(previous["package"],previous["packageSha256"])
     hosted(c["path"],c["sha256"]);hosted(c["package"],c["packageSha256"])
     hosted(str((folder/"publication.json").relative_to(repo)),digest((folder/"publication.json").read_bytes()))
     current["dev"]=c
@@ -214,6 +217,10 @@ def verify(repo,wait):
         if c.get("package"):
             require(c["package"].startswith(BASE+"releases/") and digest((repo/c["package"]).read_bytes())==c["packageSha256"],"Package mismatch")
             paths.append(c["package"])
+    # A package-bearing pointer must have an exact immutable provenance record.
+    if current["dev"].get("package"):
+        active_record=repo/(BASE+"releases/"+current["dev"]["version"]+"/publication.json")
+        require(load(active_record.read_bytes())["candidate"]==current["dev"],"Active pointer/provenance mismatch")
     # Also verify staged immutable assets before their pointer is active.
     for record in sorted((repo/(BASE+"releases")).glob("*/publication.json")):
         evidence=load(record.read_bytes());c=evidence["candidate"]
@@ -224,6 +231,12 @@ def verify(repo,wait):
         expected,source=unpack((repo/c["package"]).read_bytes(),evidence["commit"],c["packageSha256"])
         require(expected==c and (repo/c["path"]).read_bytes()==source,"Prepared immutable artifact mismatch")
         paths.extend([c["path"],c["package"],str(record.relative_to(repo))])
+        previous=evidence["previousDev"];verify_entry(previous,"dev")
+        require(digest((repo/previous["path"]).read_bytes())==previous["sha256"],"Rollback source mismatch")
+        paths.append(previous["path"])
+        if previous.get("package"):
+            require(digest((repo/previous["package"]).read_bytes())==previous["packageSha256"],"Rollback package mismatch")
+            paths.append(previous["package"])
     paths=list(dict.fromkeys(paths))
     expires=time.monotonic()+wait
     for attempt in range(100):

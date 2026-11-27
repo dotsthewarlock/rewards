@@ -101,7 +101,7 @@ class PublicationTests(unittest.TestCase):
                 with patch.object(m,"hosted"):
                     with self.assertRaises(ValueError):m.activate(activate)
                 target.write_bytes(m.json_bytes(current))
-                with patch.object(m,"hosted") as hosted:m.activate(activate);self.assertEqual(hosted.call_count,len(m.FROZEN)+4)
+                with patch.object(m,"hosted") as hosted:m.activate(activate);self.assertEqual(hosted.call_count,len(m.FROZEN)+5)
                 self.assertEqual(m.load(target.read_bytes()),{**current,"dev":candidate})
                 self.assertEqual((repo/candidate["path"]).read_bytes(),source)
                 target.write_bytes(m.json_bytes({**current,"stable":{**stable,"sha256":"f"*64}}))
