@@ -72,6 +72,16 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         page.goto(f"chrome-extension://{ext_id}/index.html")
         expect(page.locator("main")).to_contain_text("Legacy cache management")
         expect(page.get_by_role("button",name="Authorize simulated claim")).to_have_count(0)
+        for theme in ("light","dark"):
+            page.emulate_media(color_scheme=theme)
+            for width in (320,360,400,480):
+                page.set_viewport_size({"width":width,"height":800})
+                for view in ("Queue","Rewards","Campaigns","Settings"):
+                    button(view).focus()
+                    page.keyboard.press("Enter")
+                    assert page.locator("main").evaluate("el=>el===document.activeElement")
+                    assert page.evaluate("document.documentElement.scrollWidth<=innerWidth"),(theme,width,view)
+        print("production-facing workspace keyboard navigation and responsive widths PASS",flush=True)
         print("production-facing workspace contains no demo claim controls PASS",flush=True)
     finally:
         ctx.close()

@@ -5,6 +5,8 @@ import {esc,button,check} from './components.js';
 export function mountWorkspace(root,request,{recording=true}={}){
 const $=id=>root.getElementById(id);
 let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null;
+let revealedReward=null,revealEpoch=0,revealTimer=null;
+function hideReward(){revealEpoch++;clearTimeout(revealTimer);revealTimer=null;const shown=!!revealedReward;revealedReward=null;return shown;}
 const editMessage={
  'context-changed':'Campaign changed or legacy workspace is open. Refresh before editing.',
  'legacy-busy':'Existing pending, active or locked state. Inspect it before editing. Do not retry an unresolved claim or open legacy v15 while a new attempt is unresolved.',
@@ -19,7 +21,13 @@ const sameTarget=(a,b)=>!!a&&!!b&&a.origin===b.origin&&a.campaign===b.campaign&&
 const stateLabel={queued:'Ready',processing:'Processing',pending:'Pending',complete:'Complete',error:'Error',duplicate:'Duplicate',other:'Unknown'};
 function maskedList(rows,index,action,history=false,rewards=false){
  const total=Math.max(1,Math.ceil(rows.length/25)),current=Math.min(index,total-1);
- const items=rows.slice(current*25,current*25+25).map(r=>'<li class="row spread"><span class="mono">'+(r.last4===null?'Unavailable':'•••• '+esc(r.last4))+'</span>'+(rewards?'<span>'+ (r.value===null?'Value unavailable':'CAD $'+esc(r.value))+'</span>':history?'':'<span>'+esc(stateLabel[r.state])+'</span>')+'</li>').join('');
+ const items=rows.slice(current*25,current*25+25).map(r=>{
+   const revealed=rewards&&revealedReward?.index===r.index;
+   return '<li class="row spread"><span class="mono">'+(r.last4===null?'Unavailable':'•••• '+esc(r.last4))+'</span>'+
+     (rewards?'<span>'+(r.value===null?'Value unavailable':'CAD $'+esc(r.value))+'</span>'+button(revealed?'Hide':'Reveal','toggleReward',{extra:'data-value="'+r.index+'" aria-label="'+(revealed?'Hide':'Reveal')+' reward '+(r.index+1)+'" aria-expanded="'+!!revealed+'"'})+
+       (revealed?'<div class="full stack"><span>Merchant: '+esc(revealedReward.merchant)+'</span><span class="mono">Card: '+esc(revealedReward.number)+'</span><span class="mono">PIN: '+esc(revealedReward.pin)+'</span></div>':'')
+       :history?'':'<span>'+esc(stateLabel[r.state])+'</span>')+'</li>';
+ }).join('');
  return '<ul class="list">'+items+'</ul>'+(total>1?'<div class="row spread">'+button('Previous',action,{disabled:current===0,extra:'data-value="'+(current-1)+'"'})+'<span>'+(current+1)+'/'+total+'</span>'+button('Next',action,{disabled:current===total-1,extra:'data-value="'+(current+1)+'"'})+'</div>':'');
 }
 const alive=()=>!root.host||root.host.isConnected;
@@ -54,9 +62,9 @@ function render(){
      if(details?.ok)body+='<section class="surface"><h3>Existing queue</h3>'+(details.queue.length?maskedList(details.queue,page,'queuePage'):'<p>No queued records.</p>')+'</section>';
    }
  }else if(screen==='rewards'){
-   body='<h2>Rewards</h2><p>'+(summary?.ok?summary.rewards+' legacy gift-card records · '+summary.history+' redemption history records':'No connected cache')+'</p><p>Export includes the stored card numbers and PINs. Keep the file private.</p>' + button('Download CSV','rewardCSV',{disabled:!summary?.rewards||!state?.target}) + button('Copy TSV','rewardTSV',{disabled:!summary?.rewards||!state?.target}) + '';
+   body='<h2>Rewards</h2><p>'+(summary?.ok?summary.rewards+' legacy gift-card records · '+summary.history+' redemption history records':'No connected cache')+'</p><p>Reveal and export show private saved reward details. Reveal displays one current record for 30 seconds. Keep the workspace and exports private.</p>' + button('Download CSV','rewardCSV',{disabled:!summary?.rewards||!state?.target}) + button('Copy TSV','rewardTSV',{disabled:!summary?.rewards||!state?.target}) + '';
    if(details?.ok){
-     const cards=browseTab==='cards',rows=cards?details.rewards:details.history;
+     const cards=browseTab==='cards',rows=cards?details.rewards.map((r,index)=>({...r,index})):details.history;
      const filtered=rows.filter(r=>!browseSearch||r.last4?.toUpperCase().includes(browseSearch.toUpperCase()));
      body+='<section class="surface stack"><div class="row" role="group" aria-label="Browse records">'+
        button('Saved rewards','browseTab',{extra:'data-value="cards" aria-pressed="'+cards+'"',primary:cards})+
@@ -69,6 +77,7 @@ function render(){
  }else{
    body='<h2>Settings</h2>';
    if(summary?.ok&&state?.target)body+='<section class="surface stack"><h3>Legacy preferences</h3><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p><label for="emailDraft">New redemption email</label><input id="emailDraft" type="email" maxlength="254" autocomplete="off" value="'+esc(emailDraft)+'">'+button('Save email','saveEmail',{disabled:editing||summary.unresolved||!emailDraft.trim()})+check('clipboardPreference','Saved clipboard preference',summary.clipboard,editing||summary.unresolved)+'<p class="muted">Preferences do not authorize claims. Keep legacy v15 closed while editing.</p></section>';
+   if(r?.controls)body+='<section class="surface stack"><h3>Current structural evidence</h3><p>Observed counts only; not proof of eligibility or compatibility.</p><ul class="list">'+[['Form','form'],['Barcode field','serial'],['Active step','activeStep'],['Submit controls','submit']].filter(([,key])=>r.controls[key]).map(([name,key])=>'<li><strong>'+esc(name)+'</strong><p>'+r.controls[key].present+' present · '+r.controls[key].visible+' visible · '+r.controls[key].actionable+' actionable</p></li>').join('')+'</ul></section>';
    body+='<section class="surface stack"><h3>Diagnostics</h3>'+(recording?check('diagnosticsEnabled','Record sanitized structural observations',!!state?.diagnostics?.enabled)+'<p>'+(state?.diagnostics?.count||0)+'/500 distinct records</p>':'<p>Current document only. Background recording requires the extension.</p>')+button('Export diagnostics','export',{disabled:!state?.diagnostics?.count})+'<p>Read-only, scoped to recognized pages. No credentials, raw text or URLs.</p></section>';
  }
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
@@ -79,6 +88,7 @@ function render(){
  }
 }
 async function refresh(){
+ if(hideReward())render();
  const n=++serial;
  try{const s=await request('inspect');if(n!==serial||!alive())return;if(reviewed&&(!sameTarget(reviewed.target,s?.target)||JSON.stringify(state?.report)!==JSON.stringify(s?.report)||JSON.stringify(state?.details)!==JSON.stringify(s?.details)||s?.summary?.unresolved))discardReview();if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;rewardPage=0;browseSearch='';inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
  catch{if(n!==serial||!alive())return;discardReview();state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
@@ -103,12 +113,12 @@ async function edit(op,value){
 }
 root.addEventListener('click',async e=>{
  const target=e.target.closest('[data-action]');if(!target||target.disabled)return;
- if(target.dataset.action==='navigate'){discardReview();screen=target.dataset.value;render();$('workspace').focus();}
+ if(target.dataset.action==='navigate'){hideReward();discardReview();screen=target.dataset.value;render();$('workspace').focus();}
  if(target.dataset.action==='refresh'){discardReview();await refresh();}
  if(target.dataset.action==='queuePage'){page=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
- if(target.dataset.action==='rewardPage'){rewardPage=Number(target.dataset.value);render();$('workspace').focus();}
- if(target.dataset.action==='browseTab'){browseTab=target.dataset.value;browseSearch='';rewardPage=0;historyPage=0;render();}
+ if(target.dataset.action==='rewardPage'){hideReward();rewardPage=Number(target.dataset.value);render();$('workspace').focus();}
+ if(target.dataset.action==='browseTab'){hideReward();browseTab=target.dataset.value;browseSearch='';rewardPage=0;historyPage=0;render();}
  if(target.dataset.action==='prepareFinal'){
    if(!e.isTrusted||editing||!state?.target||state.summary?.unresolved)return;
    discardReview();const selected=state.target,n=serial;
@@ -162,6 +172,30 @@ root.addEventListener('click',async e=>{
    $('importResult').textContent=preview;
    target.disabled=false;
  }
+ if(target.dataset.action==='toggleReward'){
+   if(!e.isTrusted||screen!=='rewards'||browseTab!=='cards'||!state?.target)return;
+   const index=Number(target.dataset.value),expected=state.details?.rewards?.[index],selected=state.target,n=serial;
+   if(!expected||!Number.isInteger(index))return;
+   const wasShown=revealedReward?.index===index;
+   hideReward();render();
+   if(wasShown)return;
+   const epoch=revealEpoch;
+   try{
+     // Reuse the existing explicit, scoped local export. Keep only the chosen record
+     // in the foreground workspace; never write it to diagnostics or storage.
+     const result=await request('exportRewards',{target:selected});
+     if(epoch!==revealEpoch||n!==serial||screen!=='rewards'||browseTab!=='cards'||!alive()||document.hidden||!sameTarget(selected,state?.target))return;
+     const row=result?.rows?.[index];
+     if(!result?.ok||result.rows.length!==state.details.rewards.length||!row||
+        !['cardMerchant','gcNumber','gcPin','valueRecent'].every(k=>typeof row[k]==='string')||
+        (expected.value!==null&&row.valueRecent!==expected.value)||
+        (expected.last4!==null&&row.gcNumber.replace(/[ -]/g,'').slice(-4)!==expected.last4))throw Error();
+     revealedReward={index,merchant:row.cardMerchant,number:row.gcNumber,pin:row.gcPin};
+     revealTimer=setTimeout(()=>{if(hideReward()&&alive()&&screen==='rewards')render();},30000);
+     render();$('announcement').textContent='One saved reward revealed temporarily.';
+   }catch{if(epoch===revealEpoch&&alive())$('announcement').textContent='Reveal unavailable. Refresh the current campaign.';}
+   return;
+ }
  if(['rewardCSV','rewardTSV'].includes(target.dataset.action)){
    const selected=state?.target,n=serial;
    try{
@@ -185,7 +219,7 @@ root.addEventListener('click',async e=>{
 });
 root.addEventListener('input',e=>{
  if(e.target.id==='browseSearch'){
-   browseSearch=e.target.value;rewardPage=0;historyPage=0;render();return;
+   hideReward();browseSearch=e.target.value;rewardPage=0;historyPage=0;render();return;
  }
  if(e.target.id==='emailDraft'){
    emailDraft=e.target.value;
@@ -199,6 +233,7 @@ root.addEventListener('input',e=>{
  const add=root.querySelector('[data-action="addQueue"]');if(add)add.disabled=editing||!!state?.summary?.unresolved||!draft.trim();
 });
 root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&hideReward()&&alive())render();});
 render();refresh();
 return {refresh};
 }
