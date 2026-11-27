@@ -12,27 +12,49 @@ const originOf=url=>{try{return new URL(url).origin;}catch{return null;}};
 const indexURL=chrome.runtime.getURL('index.html');
 let recordingTail=Promise.resolve();
 const serial=job=>{const result=recordingTail.then(job);recordingTail=result.catch(()=>{});return result;};
+// Snapshot schema remains unchanged. Timeline entries are a bounded additive local index.
+const diagnosticReasons=Object.freeze(['initial','structure-change','document-restored','recording-enabled','control-interaction','selection-change']);
+const eventLimit=2000;
+const validTime=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(x);
 async function diagnostics(){
-  const x=await chrome.storage.local.get({diagnosticsEnabled:false,structuralRecords:[]});
-  const records=[];
-  if(Array.isArray(x.structuralRecords))for(const row of x.structuralRecords.slice(0,500)){
+  const x=await chrome.storage.local.get({diagnosticsEnabled:false,structuralRecords:[],structuralEvents:[]});
+  const records=[],indices=new Map();
+  if(Array.isArray(x.structuralRecords))for(const [index,row] of x.structuralRecords.slice(0,500).entries()){
     const report=D.validate(row?.report,row?.report?.origin);
-    if(report?.status==='recognized'&&typeof row.at==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(row.at))records.push({at:row.at,report});
+    if(report?.status==='recognized'&&validTime(row.at)){
+      indices.set(index,records.length);records.push({at:row.at,report});
+    }
   }
-  const rawCount=Array.isArray(x.structuralRecords)?x.structuralRecords.length:0;
-  const blocked=!Array.isArray(x.structuralRecords)||rawCount!==records.length||records.length>=500;
-  return {enabled:x.diagnosticsEnabled===true,records,blocked};
+  const events=[];
+  if(Array.isArray(x.structuralEvents))for(const event of x.structuralEvents.slice(0,eventLimit)){
+    if(!event||Object.keys(event).length!==4||!validTime(event.at)||!validTime(event.snapshotAt)||
+       !diagnosticReasons.includes(event.reason)||!Number.isInteger(event.snapshot)||!indices.has(event.snapshot))continue;
+    const snapshot=indices.get(event.snapshot);
+    if(records[snapshot].at!==event.snapshotAt)continue;
+    events.push({at:event.at,snapshotAt:event.snapshotAt,snapshot,reason:event.reason});
+  }
+  const blocked=!Array.isArray(x.structuralRecords)||x.structuralRecords.length!==records.length||records.length>=500||
+    !Array.isArray(x.structuralEvents)||x.structuralEvents.length!==events.length||events.length>=eventLimit;
+  return {enabled:x.diagnosticsEnabled===true,records,events,blocked};
 }
-async function record(report){
+async function record(report,reason='structure-change'){
   return serial(async()=>{
     const data=await diagnostics();
     if(!data.enabled||report.status!=='recognized')return {ok:true};
-    const sig=JSON.stringify(report);
-    if(data.records.some(row=>JSON.stringify(row.report)===sig))return {ok:true};
+    const clean=D.validate(report,report.origin);
+    if(!clean||!diagnosticReasons.includes(reason))return {ok:false,reason:'invalid-report'};
     if(data.blocked)return {ok:false,reason:'diagnostics-retention-blocked'};
-    const records=[...data.records,{at:new Date().toISOString(),report}];
-    await chrome.storage.local.set({structuralRecords:records});
-    return {ok:true};
+    const records=[...data.records],sig=JSON.stringify(clean),at=new Date().toISOString();
+    let snapshot=records.findIndex(row=>JSON.stringify(row.report)===sig);
+    if(snapshot<0){snapshot=records.length;records.push({at,report:clean});}
+    const events=[...data.events,{at,snapshotAt:records[snapshot].at,snapshot,reason}];
+    try{
+      await chrome.storage.local.set({structuralRecords:records,structuralEvents:events});
+      const readback=await chrome.storage.local.get(['structuralRecords','structuralEvents']);
+      if(JSON.stringify(readback.structuralRecords)!==JSON.stringify(records)||JSON.stringify(readback.structuralEvents)!==JSON.stringify(events))
+        return {ok:false,reason:'diagnostics-write-unverified'};
+      return {ok:true};
+    }catch{return {ok:false,reason:'diagnostics-write-unverified'};}
   });
 }
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -110,7 +132,7 @@ async function handle(m,sender){
     if(!report)return {ok:false,reason:'invalid-report'};
     await chrome.action.setBadgeText({tabId:sender.tab.id,text:report.status==='recognized'?'●':'?'}).catch(()=>{});
     await chrome.action.setTitle({tabId:sender.tab.id,title:report.status==='recognized'?'Rewards Companion: recognized':'Rewards Companion: diagnostic-only'}).catch(()=>{});
-    return record(report);
+    return record(report,m.reason===undefined?'structure-change':m.reason);
   }
   if(m?.type!=='companion.workspace'||sender.url!==indexURL)return {ok:false,reason:'untrusted-command'};
   if(m.op==='getCatalog'){
@@ -120,11 +142,11 @@ async function handle(m,sender){
   if(m.op==='refreshCatalog')return refreshCatalog();
   if(m.op==='inspect'){
     const tab=await activeTab(),data=await diagnostics();
-    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length,blocked:data.blocked}};
+    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length,eventCount:data.events.length,blocked:data.blocked}};
   }
   if(m.op==='setDiagnostics'&&typeof m.enabled==='boolean'){
     await serial(()=>chrome.storage.local.set({diagnosticsEnabled:m.enabled}));
-    if(m.enabled){const tab=await activeTab();if(tab?.id!==undefined){const result=await inspectTab(tab.id);if(result.report?.status==='recognized')await record(result.report);}}
+    if(m.enabled){const tab=await activeTab();if(tab?.id!==undefined){const result=await inspectTab(tab.id);if(result.report?.status==='recognized')await record(result.report,'recording-enabled');}}
     return {ok:true};
   }
   if(m.op==='revealReward')return revealTab(m.target,m.snapshot,m.index);
@@ -136,8 +158,8 @@ async function handle(m,sender){
   if(m.op==='cancelFinal')return cancelTab(m.target,m.attemptId);
   if(m.op==='authorizeFinal')return authorizeTab(m.target,m.attemptId,m.confirmed);
   if(m.op==='exportDiagnostics'){
-    const {records,blocked}=await diagnostics();
-    return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'mv3',scope:'retained-structural-observations',evidence:'structural-only',version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),recordingBlocked:blocked},records}};
+    const {records,events,blocked}=await diagnostics();
+    return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'mv3',scope:'retained-structural-observations',evidence:'structural-only',version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),recordingBlocked:blocked,eventCoverage:'since-timeline-enabled'},records,events}};
   }
   return {ok:false,reason:'unsupported-command'};
 }

@@ -15,6 +15,7 @@ Current: V0.3/M2 offline scheduling foundation verified; M1 synthetic implementa
 - Production main 0033e6f unchanged; no redeem/ or scan/ changes. All 12 original source hashes reverified. Native Chromebook/toolbar, saved bookmark URL execution, CSP/length/reinvocation, hosted baseline bytes, full WCAG, authentic final/success evidence/E4, listener parity and release/rollback remain unverified. No live claims, user installation, data migration or release.
 
 ## Roadmap (internal checkpoints; advance autonomously)
+Approved convergence: A1 shared command/response and boundary stabilization (after V0.3); A2 production destination presentation separation and A3 shared production/synthetic rendering (after V0.4, before integrated V0.5). One shared engine, one presentation system, two production distributions, one synthetic sandbox; synthetic-only code excluded from runtime builds.
 | Milestone | Scope and exit |
 |---|---|
 | V0.0–V0.1 foundation | Static compatibility and synthetic M3 prototype/Chromium shell verified in part. Carry pending native, hosted, accessibility checks into consolidated acceptance; no invented pass. |
@@ -22,7 +23,7 @@ Current: V0.3/M2 offline scheduling foundation verified; M1 synthetic implementa
 | V0.3 campaign and diagnostic compatibility | Evidence-based variants, optional product/location/reward choices and success/error paths; generalize exact origin + campaign identity independently of static execution support. Read-only Canadian official-source catalog foundation (M1) without expanding execution eligibility. Restore useful original listener capabilities with privacy/retention. Unknown variants diagnostic-only. Campaign fixtures and confidence recorded. |
 | V0.4 durability | Targeted failure injection, same-URL navigation/reinjection, stale/cancelled attempts, ownership across tabs/formats, reload/worker lifecycle, persistence/readback, reconciliation and coexistence with legacy tools. Choose simplest sufficient prevention/recovery; critical safeguards not deferred. |
 | V0.5 integrated acceptance | Both distributions' practical parity, real M3 workspace, clipboard, long queues, history/search/reveal/export/preferences, WCAG 2.2 AA and responsive/focus tests. Consolidate native Chromebook and actual bookmarklet invocation checks; separately authorized legitimate live E4, authentic sanitized success evidence; listener parity/export/retention before retirement. |
-| V0.6 release candidate | Deterministic versioned artifacts, hashes, permission/privacy, no test-only/runtime waste, install/update/rollback and baseline hosted verification. |
+| V0.6 release candidate | Deterministic versioned artifacts and hashes, permanent public versioned GitHub Release asset URLs, separate development/stable channels, installation page, manual extension update and rollback, update availability, permission/privacy, no test-only/runtime waste, and baseline hosted verification. Evaluate stable fresh-fetch bookmarklet launcher versus self-contained distribution and actual CSP/rollback evidence. |
 | V1.0 stable | Publish full extension and maintained bookmarklet via GitHub when applicable gates satisfied. Keep stable v15 rollback and scanner; no premature listener removal. |
 
 ## Separately accepted monitoring enhancement

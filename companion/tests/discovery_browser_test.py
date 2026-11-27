@@ -89,6 +89,8 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert diagnostic_export["export"]["provenance"]["evidence"]=="structural-only"
             assert "TEST_SECRET_CARD" not in json.dumps(diagnostic_export)
             assert diagnostic_export["export"]["records"]==records
+            assert diagnostic_export["export"]["events"][0]["snapshot"]==0
+            assert diagnostic_export["export"]["events"][0]["reason"]=="initial"
             # Exercise the actual index sender and trusted manual click against a
             # worker-local synthetic response, never the public network.
             worker.evaluate("""()=>{globalThis.catalogFetchCalls=0;globalThis.catalogMode='ok';
@@ -160,6 +162,20 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("(target)=>exportTab(target)",report["target"])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
         print("sanitized diagnostics persisted; conflict blocks cache read and recording PASS",flush=True)
+        # Timeline retains return-to-earlier-state without duplicating the snapshot.
+        initial=report["report"]
+        variant=dict(initial,labels=[])
+        old=worker.evaluate("async()=>await diagnostics()")
+        assert worker.evaluate("r=>record(r,'structure-change')",variant)["ok"]
+        assert worker.evaluate("r=>record(r,'control-interaction')",initial)["ok"]
+        timeline=worker.evaluate("async()=>await diagnostics()")
+        assert len(timeline["records"])==len(old["records"])+1
+        assert len(timeline["events"])==len(old["events"])+2
+        assert timeline["events"][-1]["snapshot"]==0
+        assert timeline["events"][-1]["reason"]=="control-interaction"
+        assert not worker.evaluate("r=>record(r,'SECRET_EVENT')",initial)["ok"]
+        assert "SECRET_EVENT" not in json.dumps(worker.evaluate("async()=>await diagnostics()"))
+        print("bounded deduplicated diagnostic timeline retains repeated states and fixed reasons PASS",flush=True)
         # Explicit edits only after replacing the fixture's pending row with ready.
         page.evaluate("""()=>{document.body.dataset.slug='CA1126VANW';localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued'}]));}""")
         page.bring_to_front()

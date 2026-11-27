@@ -28,18 +28,18 @@
       expiry=setTimeout(()=>{observer?.disconnect();observer=null;},45000);
     }
   }
-  async function capture(){
+  async function capture(reason='structure-change',force=false){
     if(stopped)return;
     const report=D.report(document),id=D.identity(document);
     if(!report)return;
     // Loss of recognition terminates recording scope; bounded discovery remains.
     bind(report.status==='recognized'?id:null);
     const sig=JSON.stringify(report);
-    if(sig===last)return;
+    if(sig===last&&!force)return;
     last=sig;
     const seq=++generation;
     try{
-      const response=await chrome.runtime.sendMessage({type:'companion.observation',report});
+      const response=await chrome.runtime.sendMessage({type:'companion.observation',report,reason});
       if(!response?.ok&&seq===generation)last='';
     }catch{if(seq===generation)last='';}
   }
@@ -94,7 +94,16 @@
     }
     reply({report,documentToken,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null});
   });
+  // Observe only trusted, actionable controls inside the recognized wizard.
+  // Record fixed event reasons; never read entered values or arbitrary labels.
+  function observeInteraction(event,selector,reason){
+    if(stopped||!event.isTrusted)return;
+    const el=event.target?.closest?.(selector),id=D.identity(document);
+    if(id?.status==='recognized'&&el&&id.root.contains(el)&&D.actionable(el))capture(reason,true);
+  }
+  document.addEventListener('click',e=>observeInteraction(e,'button,input[type="button"],input[type="submit"],a,[role="button"]','control-interaction'),true);
+  document.addEventListener('change',e=>observeInteraction(e,'input[type="checkbox"],input[type="radio"],select','selection-change'),true);
   window.addEventListener('pagehide',()=>{stopped=true;clearPrepared();disconnect();last='';generation++;});
-  window.addEventListener('pageshow',()=>{if(stopped){documentToken=crypto.randomUUID();stopped=false;capture();}});
-  capture();
+  window.addEventListener('pageshow',()=>{if(stopped){documentToken=crypto.randomUUID();stopped=false;capture('document-restored');}});
+  capture('initial');
 })();
