@@ -67,7 +67,7 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 </details>
 <details><summary>Update Rewards Companion</summary><p>The saved bookmark checks available versions each time. You choose when to open a version; use Change version to switch. You do not need to replace the bookmark. For the extension, use Check your version above. The version number alone does not identify the exact build. Before updating, stop and disable the candidate, make a private backup and keep its previous verified package. Follow the new package's installation instructions. Keep the same unpacked extension folder and reload it in Chrome; do not remove the extension or clear site data just to update.</p><p>Do not switch with an unfinished or uncertain claim.</p></details>
 <details><summary>Restore a previous version</summary><p>Stop if a claim is unfinished or uncertain. Keep the independent original v15 bookmark and previous verified extension package. Restore only a known safe version; do not run both at once. The original v15 bookmark is available separately if you need it and it is safe to switch.</p><p><a href="../../redeem/Redeem_Prepaid_Rewards_loader.txt">Original v15 bookmarklet</a></p></details>
-<details><summary>About &amp; version details</summary><p id="exact">Exact published Preview identity is unavailable.</p><p id="checksum" hidden></p><p><a id="provenance" hidden>Publication details</a></p><p>This page lists published versions, not the extension installed on your device.</p><p><a href="https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md">Testing and recovery checklist</a></p></details>
+<details><summary>About &amp; version details</summary><p id="exact">Exact published Preview identity is unavailable.</p><p id="checksum" hidden></p><p><a id="provenance" hidden>Publication details</a></p><p>This page lists published versions when checked, not the extension installed on your device. Reload to check again.</p><p><a href="https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md">Testing and recovery checklist</a></p></details>
 <details><summary>Report a problem</summary><p>Reports are public and may require a GitHub account. Never include reward codes, card numbers, PINs, email addresses or screenshots with personal information.</p><p><a href="https://github.com/dotsthewarlock/rewards/issues/new" rel="noreferrer">Open the public support form</a></p></details>
 </section>
 <noscript><p>Version lookup requires JavaScript. No Preview package link is available until the published version can be checked.</p></noscript>
@@ -83,7 +83,8 @@ const preview=c=>{
   const folder=base+'releases/'+c.version+'/';
   return c.path===folder+'rewards-companion-'+c.version+'-bookmarklet.js'||c.path===base+'releases/'+c.version+'.js';
 };
-const packageOK=c=>preview(c)&&c.package===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-development.zip'&&sha(c.packageSha256);
+const packageOK=c=>preview(c)&&c.path===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-bookmarklet.js'&&
+  c.package===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-development.zip'&&sha(c.packageSha256);
 const exactKeys=(value,keys)=>value&&typeof value==='object'&&Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
 const commitOK=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const positive=value=>Number.isSafeInteger(value)&&value>0;
@@ -91,7 +92,7 @@ const evidenceOK=(e,c)=>exactKeys(e,['schema','commit','run','artifact','checkpo
   commitOK(e.commit)&&c.version.endsWith('-'+e.commit.slice(0,12))&&positive(e.run)&&positive(e.artifact)&&
   typeof e.checkpoint==='string'&&e.checkpoint.trim().length>0&&e.checkpoint.length<=500&&
   exactKeys(e.candidate,['version','path','sha256','package','packageSha256'])&&
-  Object.keys(e.candidate).every(k=>e.candidate[k]===c[k])&&
+  exactKeys(c,['version','path','sha256','package','packageSha256'])&&Object.keys(e.candidate).every(k=>e.candidate[k]===c[k])&&
   preview(e.previousDev)&&(!Object.hasOwn(e.previousDev,'package')&&!Object.hasOwn(e.previousDev,'packageSha256')||packageOK(e.previousDev));
 async function getJSON(url){
   const response=await fetch(url,{cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(10000)});
@@ -137,7 +138,7 @@ $('compare').addEventListener('click',()=>{
   let result=unknown;
   if(preferred==='stable'&&distribution==='extension')result='Regular is not available for the Chrome extension. Choose Preview explicitly to compare.';
   else if(preferred==='stable'&&!regularAvailable||preferred==='dev'&&!verified)result='The selected version could not be checked. Your current version has not changed.';
-  else if(running==='stable'&&distribution==='bookmarklet')result=preferred==='stable'?'Regular v15 matches the published Regular version.':'The published Preview is a different release. Switching is your choice; do not switch during an unfinished claim.';
+  else if(running==='stable'&&distribution==='bookmarklet')result=preferred==='stable'?'The Regular v15 you selected matches the published Regular version.':'The published Preview is a different release. Switching is your choice; do not switch during an unfinished claim.';
   else if(running==='dev'&&/^\d+\.\d+\.\d+$/.test($('running-version').value.trim())&&commitOK($('running-commit').value.trim())){
     if(preferred==='stable')result='Regular v15 is a different release. Switching is your choice; do not switch during an unfinished claim.';
     else if($('running-version').value.trim()===verified.version&&$('running-commit').value.trim()===verified.commit)result='Your exact Preview build matches the published Preview.';

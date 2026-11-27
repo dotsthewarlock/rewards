@@ -80,7 +80,7 @@ class PublicationTests(unittest.TestCase):
             ext={n:z.read(n) for n in z.namelist()}
         panel=ext["index.html"]
         for bad in (b"<header></header>",panel.replace(COMMIT.encode(),b"b"*40),
-                    panel.replace(b'0.6.1',b'0.6.2'),panel+panel,
+                    panel.replace(b'0.6.1',b'0.6.2'),panel+panel,b"<template>"+panel+b"</template>",
                     panel.replace(b'data-build-version=',b'data-build-version="0.6.1" data-build-version=')):
             with self.subTest(panel=bad):
                 with self.assertRaises(ValueError):repackage({**files,ASSETS["extension"]:archive({**ext,"index.html":bad})})
@@ -137,7 +137,8 @@ class PublicationTests(unittest.TestCase):
                 activate=SimpleNamespace(version=candidate["version"])
                 record=(repo/candidate["path"]).parent/"publication.json"
                 original=record.read_bytes();evidence=m.load(original)
-                for bad in ({"run":True},{"artifact":"43"},{"artifact":0},{"checkpoint":""},{"checkpoint":"x"*501},{"commit":"b"*40}):
+                for bad in ({"run":True},{"artifact":"43"},{"artifact":0},{"checkpoint":""},{"checkpoint":"x"*501},{"commit":"b"*40},
+                            {"candidate":{**candidate,"path":m.BASE+"releases/"+candidate["version"]+".js"}}):
                     record.write_bytes(m.json_bytes({**evidence,**bad}))
                     with self.assertRaises(ValueError):m.read_evidence(record)
                 record.write_bytes(b" "* (m.EVIDENCE_LIMIT+1))

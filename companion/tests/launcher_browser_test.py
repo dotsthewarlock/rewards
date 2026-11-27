@@ -276,6 +276,10 @@ with sync_playwright() as p:
     assert set(requests)<={address,address+"channels.json",root+str(Path(published["dev"]["package"]).parent)+"/publication.json",address+"favicon.ico","https://dotsthewarlock.github.io/favicon.ico"}
     selection={**published,"dev":{**published["dev"],"package":"https://other.invalid/download.zip"}}
     open_distribution();assert not download.is_visible();assert download.count()==0
+    flat={**published["dev"],"path":base+"releases/"+published["dev"]["version"]+".js"}
+    selection={**published,"dev":flat};evidence={**good_evidence,"candidate":flat}
+    open_distribution();assert not download.is_visible()
+    evidence=good_evidence
     selection={"schema":1,"stable":published["stable"]}
     open_distribution();assert distribution.get_by_text("Preview is unavailable.",exact=True).is_visible()
     selection={**published,"schema":2}
@@ -295,7 +299,7 @@ with sync_playwright() as p:
     request_count=len(requests)
     distribution.get_by_role("button",name="Compare versions").click()
     assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
-    distribution.get_by_label("Full source ID from version details").fill("a"*40)
+    distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"][:12]+("a" if good_evidence["commit"][12:]!="a"*28 else "b")*28)
     distribution.get_by_role("button",name="Compare versions").click()
     assert "does not establish which build is newer" in distribution.locator("#comparison-result").inner_text()
     distribution.get_by_label("Full source ID from version details").fill("bad")
@@ -334,6 +338,18 @@ with sync_playwright() as p:
     open_distribution();assert not download.is_visible()
     evidence_available=True;distribution.get_by_role("button",name="Try again").click();download.wait_for()
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    # Blocked page storage is optional; session comparison still works.
+    distribution.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}})")
+    open_distribution();download.wait_for()
+    distribution.get_by_text("Check your version",exact=True).click()
+    distribution.get_by_label("Version you are using").select_option("dev")
+    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    distribution.get_by_label("Compare with").select_option("stable")
+    distribution.get_by_label("Compare with").select_option("dev")
+    distribution.get_by_label("Version number").fill(published["dev"]["version"].split("-dev-")[0])
+    distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"])
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
     print("D3 exact build comparison and provenance scenarios PASS",flush=True)
     distribution.emulate_media(color_scheme="dark",forced_colors="active")
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")

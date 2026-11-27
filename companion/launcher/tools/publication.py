@@ -70,7 +70,13 @@ class PanelIdentity(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.headers=[]
+        self.first_tag=None
+        self.in_body=False
+        self.body_first=None
     def handle_starttag(self, tag, attrs):
+        if self.first_tag is None:self.first_tag=tag
+        if tag=="body":self.in_body=True
+        elif self.in_body and self.body_first is None:self.body_first=tag
         if tag=="header":
             self.headers.append(attrs)
 
@@ -78,7 +84,7 @@ def verify_panel_identity(markup, version, commit):
     parser=PanelIdentity()
     parser.feed(markup)
     parser.close()
-    require(len(parser.headers)==1,"Expected one workspace header")
+    require(len(parser.headers)==1 and (parser.body_first=="header" if parser.in_body else parser.first_tag=="header"),"Expected one leading workspace header")
     attrs=parser.headers[0]
     for name,value in (("data-build-version",version),("data-build-commit",commit)):
         require([v for k,v in attrs if k==name]==[value],"Embedded workspace identity mismatch: "+name)
@@ -224,6 +230,7 @@ def read_evidence(record):
     c=evidence["candidate"]
     verify_entry(c,"dev");verify_entry(evidence["previousDev"],"dev")
     require(set(c)=={"version","path","sha256","package","packageSha256"} and
+            c["path"]==BASE+"releases/"+c["version"]+"/rewards-companion-"+c["version"]+"-bookmarklet.js" and
             record.parent.name==c["version"] and c["version"].endswith("-"+evidence["commit"][:12]),"Invalid publication evidence binding")
     return evidence
 
