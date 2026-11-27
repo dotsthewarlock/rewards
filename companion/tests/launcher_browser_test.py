@@ -1,5 +1,7 @@
 """Synthetic launcher tests only. No external requests or merchant code execution."""
 import hashlib
+import faulthandler
+import time
 import json
 import os
 from pathlib import Path
@@ -24,11 +26,19 @@ for key in ("stable","dev"):
     c=published[key]
     assert hashlib.sha256((project.parent/c["path"]).read_bytes()).hexdigest()==c["sha256"]
 
+faulthandler.dump_traceback_later(180, exit=True)
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=os.environ.get("CHROMIUM_EXECUTABLE") or None)
     page=browser.new_page(viewport={"width":320,"height":480})
+    page.set_default_timeout(10000)
+    page.set_default_navigation_timeout(10000)
+    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors"])
+    scenario_count=0
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
     def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False):
+        global scenario_count
+        scenario_count+=1
+        print(f"START {scenario_count}: {next(scenarios)}",flush=True)
         page.goto("https://fixture.invalid/")
         page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource])=>{
           window.launches=0;window.calls=[];window.errors=[];window.fail=fail;window.manifestFail=manifestFail;
@@ -55,15 +65,17 @@ with sync_playwright() as p:
     def ready():
         button("Stable · v15").wait_for()
         page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Stable · v15'")
+    started=time.perf_counter()
     setup();ready()
+    print(f"Synthetic navigation-to-ready: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
     assert page.get_by_role("dialog").bounding_box()["width"]<=320
     assert not page.get_by_text("More testing options").is_visible()
-    page.evaluate("window.run()");assert page.get_by_role("dialog").count()==1
+    page.evaluate("() => { void window.run(); }");assert page.get_by_role("dialog").count()==1
     assert len(page.evaluate("calls"))==2
     page.keyboard.press("Escape");gone();assert page.evaluate("document.activeElement.id")=="original";check(0)
     setup();button("Preview · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
     setup(body="window.launches=99");button("Preview · 0.6.0").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
-    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("window.run()");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
+    setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("() => { void window.run(); }");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
     setup(busy=True);page.wait_for_function("calls.length===1&&!window[Symbol.for('rewards.companion.launcher')]");assert page.evaluate("errors.length")==0;check(0)
     setup(delay=True);button("Preview · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
     setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
@@ -83,6 +95,8 @@ with sync_playwright() as p:
     page.get_by_text("Help & version details",exact=True).click()
     assert page.get_by_text(manifest["dev"]["version"],exact=False).is_visible()
     link=page.get_by_role("link",name="Report a problem")
+    assert link.bounding_box()["height"]>=48
+    assert page.get_by_text("Help & version details",exact=True).bounding_box()["height"]>=48
     assert link.get_attribute("href")=="https://github.com/dotsthewarlock/rewards/issues/new"
     assert link.get_attribute("rel")=="noopener noreferrer"
     assert link.get_attribute("referrerpolicy")=="no-referrer"
@@ -104,9 +118,17 @@ with sync_playwright() as p:
     setup(delay=True);button("Preview · 0.6.0").click()
     assert page.get_by_role("status").inner_text()=="Opening Preview..."
     button("Cancel").click();gone()
-    page.evaluate("window.run()");ready();page.wait_for_timeout(500);check(0)
+    # A fresh bootstrap promise stays pending until the dialog closes. Do not
+    # return it to Playwright evaluate, which would await the entire lifecycle.
+    started=time.perf_counter()
+    page.evaluate("() => { window.reinvokeSettled=false; window.run().then(()=>{window.reinvokeSettled=true;}); }")
+    ready();assert page.evaluate("reinvokeSettled") is False
+    print(f"Synthetic reinvoke-to-ready: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
+    page.wait_for_timeout(500);check(0)
     assert page.get_by_role("status").inner_text()=="Choose a version."
-    page.keyboard.press("Escape");gone()
+    started=time.perf_counter()
+    page.keyboard.press("Escape");gone();page.wait_for_function("reinvokeSettled===true")
+    print(f"Synthetic Escape-to-bootstrap-settled: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
     setup(fail=True);button("Preview · 0.6.0").click();button("Retry").wait_for()
     assert page.get_by_role("status").inner_text().startswith("Could not download Preview.")
     assert not page.get_by_text("Check failed: download (Preview).",exact=True).is_visible()
@@ -127,11 +149,16 @@ with sync_playwright() as p:
         assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
         assert button("Stable · v15").bounding_box()["height"]>=48
         assert button("Cancel").bounding_box()["height"]>=48
+        page.get_by_text("Help & version details",exact=True).click()
+        assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
+        assert page.get_by_role("link",name="Report a problem").bounding_box()["height"]>=48
         page.keyboard.press("Escape");gone()
     page.set_viewport_size({"width":320,"height":480})
     page.emulate_media(forced_colors="active");setup();ready()
     assert button("Stable · v15").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
     page.keyboard.press("Escape");gone()
     page.emulate_media(forced_colors="none")
+    assert scenario_count==26 and next(scenarios,None) is None
     browser.close()
-print("16 existing + 7 targeted launcher scenario groups PASS")
+faulthandler.cancel_dump_traceback_later()
+print("26 synthetic scenario executions PASS",flush=True)
