@@ -24,6 +24,9 @@ function maskedList(rows,index,action,history=false){
 }
 const alive=()=>!root.host||root.host.isConnected;
 function render(){
+ const focus=root.activeElement;
+ const field=['importDraft','emailDraft'].includes(focus?.id)?focus.id:null;
+ const selection=field==='importDraft'?[focus.selectionStart,focus.selectionEnd]:null;
  const r=state?.report,summary=state?.summary,details=state?.details,cp=campaignById(r?.campaign);
  $('context').innerHTML='<section class="surface"><strong>'+esc(cp?.name||'No recognized campaign')+'</strong><p>'+esc(r? r.status+' · '+r.stage : state?.ok===false?'Connection unavailable':'Open a supported merchant tab')+'</p></section>';
  $('navigation').innerHTML=['queue','rewards','campaigns','settings'].map(x=>button(x[0].toUpperCase()+x.slice(1),'navigate',{extra:'data-value="'+x+'" '+(screen===x?'aria-current="page"':'')})).join('');
@@ -47,10 +50,11 @@ function render(){
    body+='<section class="surface stack"><h3>Diagnostics</h3>'+(recording?check('diagnosticsEnabled','Record sanitized structural observations',!!state?.diagnostics?.enabled)+'<p>'+(state?.diagnostics?.count||0)+'/500 distinct records</p>':'<p>Current document only. Background recording requires the extension.</p>')+button('Export diagnostics','export',{disabled:!state?.diagnostics?.count})+'<p>Read-only, scoped to recognized pages. No credentials, raw text or URLs.</p></section>';
  }
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
+ if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
 }
 async function refresh(){
  const n=++serial;
- try{const s=await request('inspect');if(n!==serial||!alive())return;if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;inputVersion++;}state=s;}
+ try{const s=await request('inspect');if(n!==serial||!alive())return;if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
  catch{if(n!==serial||!alive())return;state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
  render();
 }

@@ -1,4 +1,4 @@
-/* Frozen v15 origin/slug keys. Read-only compatibility; never migrate, recover or write on mount. */
+/* Frozen v15 origin/slug keys, strict reads and explicit cache edits. Never migrate, recover or write on mount. */
 (() => {
   'use strict';
   const states=Object.freeze(['queued','processing','pending','complete','error','duplicate']);
@@ -100,19 +100,34 @@
     }catch{}
     return legacyFallback(code);
   }
+  function historyMatcher(history){
+    const codes=new Set(history.filter(r=>barcode(r.code)).map(r=>r.code));
+    const hashes=new Set(history.filter(r=>typeof r.h==='string').map(r=>r.h));
+    return async code=>codes.has(code)||hashes.has(legacyFallback(code))||(hashes.size>0&&hashes.has(await historyHash(code)));
+  }
+  function readSnapshot(storage,slug,names){
+    if(!validSlug(slug))throw Error('invalid-campaign');
+    return Object.fromEntries(names.map(name=>[name,storage.getItem(key(slug,name))]));
+  }
+  function unchanged(storage,slug,raw){
+    return Object.keys(raw).every(name=>storage.getItem(key(slug,name))===raw[name]);
+  }
+  function checkedWrite(storage,k,value){
+    if(value===null)storage.removeItem(k);else storage.setItem(k,value);
+    if(storage.getItem(k)!==value)throw Error('readback');
+  }
   // Pure plan: exact strings and v15 duplicate/999 semantics. No IDs, timestamps,
   // merchant interactions, storage writes, or claim authorization.
   async function planQueueImport(queue,history,text){
     const candidates=parseBarcodes(text);
     const known=new Set(queue.filter(r=>r.state!=='error'&&barcode(r.code)).map(r=>r.code));
-    const historyCodes=new Set(history.filter(r=>barcode(r.code)).map(r=>r.code));
-    const hashes=new Set(history.filter(r=>typeof r.h==='string').map(r=>r.h));
+    const inHistory=historyMatcher(history);
     const additions=[];
     let queued=0,duplicates=0;
     for(const code of candidates.slice(0,Math.max(0,999-queue.length))){
-      const inHistory=historyCodes.has(code)||hashes.has(legacyFallback(code))||(hashes.size>0&&hashes.has(await historyHash(code)));
-      const duplicate=inHistory||known.has(code);
-      additions.push({code,state:duplicate?'duplicate':'queued',note:inHistory?'Already in redemption history':duplicate?'Already in queue':''});
+      const historical=await inHistory(code);
+      const duplicate=historical||known.has(code);
+      additions.push({code,state:duplicate?'duplicate':'queued',note:historical?'Already in redemption history':duplicate?'Already in queue':''});
       known.add(code);
       if(duplicate)duplicates++;else queued++;
     }
@@ -139,7 +154,7 @@
   const editLock='bs_rewards:companion:data-v1';
   const editReasons=Object.freeze(['context-changed','legacy-busy','edit-busy','lock-unavailable','invalid-input','unreadable-cache','cache-changed','edit-outcome-unknown']);
   const failEdit=reason=>({ok:false,reason});
-  const normalizedEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@]+@[^\s@]+$/.test(value.trim())?value.trim():null;
+  const normalizedEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())?value.trim():null;
   function validEdit(op,value){
     if(op==='importQueue')return typeof value==='string'&&value.length<=262144;
     if(op==='saveEmail')return normalizedEmail(value)!==null;
@@ -178,14 +193,10 @@
         if(keys.some(k=>storage.getItem(k)!==raw[k]))return failEdit('cache-changed');
         // Register the slug first, preserving every existing entry. A partial
         // index-only update is harmless. Never roll back over another writer.
-        const checkedWrite=(k,v)=>{
-          attempted=true;
-          storage.setItem(k,v);
-          if(storage.getItem(k)!==v)throw Error('readback');
-        };
-        if(!index.includes(slug))checkedWrite(indexKey,JSON.stringify([...index,slug]));
+        const write=(k,v)=>{attempted=true;checkedWrite(storage,k,v);};
+        if(!index.includes(slug))write(indexKey,JSON.stringify([...index,slug]));
         if(!contextValid()||names.some(name=>storage.getItem(key(slug,name))!==raw[key(slug,name)]))return failEdit(attempted?'edit-outcome-unknown':'cache-changed');
-        checkedWrite(key(slug,field),next);
+        write(key(slug,field),next);
         return result;
       });
     }catch{return failEdit(attempted?'edit-outcome-unknown':'unreadable-cache');}
@@ -195,5 +206,5 @@
     if(op==='importQueue')return validatePreview(input);
     return input?.ok===true&&Object.keys(input).length===1?{ok:true}:null;
   }
-  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit});
+  globalThis.RewardsLegacy=Object.freeze({summary,validate,exportRows,validateExport,details,validateDetails,parseBarcodes,planQueueImport,previewImport,validatePreview,editLock,validEdit,editCache,validateEdit,key,barcode,validSlug,decodeRows,readSnapshot,unchanged,checkedWrite,historyHash,historyMatcher,normalizedEmail});
 })();

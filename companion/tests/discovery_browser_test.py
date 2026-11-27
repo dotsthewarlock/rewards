@@ -86,4 +86,22 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert page.evaluate("localStorage.getItem('bs_rewards:CA1126VANW:email')")=="fixture@example.invalid"
         assert page.evaluate("window.clicks===0 && !localStorage.getItem('bs_rewards:CA1126VANW:active')")
         print("MV3 explicit cache edits and origin-shared page-world lock PASS",flush=True)
+        # Candidate success parser, evaluated only in this synthetic document.
+        # There is no production call path and no authentic success evidence yet.
+        success_code="012345678901234567890123456789"
+        page.set_content(f"""<!doctype html><html><body data-slug="CA1126VANW">
+<main class="value-add wizard"><section class="redemption-form">
+<p>Eligible Card: {success_code}</p><p hidden>Eligible Card: 000000000000000000000000000001</p>
+<div class="confirmation-block"><h3>You earned $15</h3><p class="h5">Walmart eGift Card</p>
+<div class="codes-container"><div class="title">Bonus Code</div><div class="text">000012345678</div><div class="title">PIN</div><div class="text">0000</div></div></div>
+<button class="btn-claim-another-code">Claim Another</button></section></main></body></html>""")
+        for script in ("discovery/core.js","discovery/legacy.js","discovery/success.js"):
+            page.evaluate((root/script).read_text())
+        captured=page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)
+        assert captured=={"ok":True,"card":{"cardMerchant":"Walmart","valueRecent":"15.00","gcNumber":"000012345678","gcPin":"0000","sourceRedemptionCode":success_code}},captured
+        assert not page.evaluate("()=>RewardsSuccess.readSuccess(document,'000000000000000000000000000001')")["ok"]
+        assert "000012345678" not in json.dumps(page.evaluate("RewardsDiscovery.report(document)"))
+        page.locator(".codes-container").evaluate("el=>el.insertAdjacentHTML('beforeend','<div class=title>Card PIN</div><div class=text>1234</div>')")
+        assert not page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)["ok"]
+        print("candidate v15 success parsing, exact eligible linkage, hidden and ambiguous fields PASS",flush=True)
     finally:ctx.close()

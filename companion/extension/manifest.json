@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Rewards Companion - development (read-only)",
+  "name": "Rewards Companion - development",
   "version": "0.2.0",
-  "description": "Read-only campaign discovery and legacy cache inspection. No merchant actions.",
+  "description": "Read-only campaign discovery, explicit legacy cache management. Claim submission disabled.",
   "permissions": [
     "sidePanel",
     "storage"
