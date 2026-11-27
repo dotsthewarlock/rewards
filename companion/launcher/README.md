@@ -37,3 +37,7 @@ Native acceptance: use the single [Companion native checklist](https://github.co
 ## L2.1 verified deployment
 
 The original V0.6 package is now permanently versioned on GitHub Pages: [public package](https://dotsthewarlock.github.io/rewards/companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-development.zip), [provenance](https://dotsthewarlock.github.io/rewards/companion/launcher/releases/0.6.0-dev-de3cb5d39410/publication.json). Active main [653a763](https://github.com/dotsthewarlock/rewards/commit/653a7630d9a15a310633f063cad98bd6c8f207ca), [Pages 46071881490](https://github.com/dotsthewarlock/rewards/actions/runs/46071881490), [final verification 46071882218](https://github.com/dotsthewarlock/rewards/actions/runs/46071882218) succeeded; all ten hosted hashes matched. Same exact candidate/source, old flat artifact retained. See [L2.1 handoff](../docs/dev/2026-11-27_launcher-L2.1-handoff.md). Native/live acceptance and GitHub Release assets remain open; no stable promotion.
+
+## UX refinement checkpoint (not accepted)
+
+Implementation [91bb9f8](https://github.com/dotsthewarlock/rewards/commit/91bb9f8ae89106806db218075572e5a8a62266a0); [exact CI run 46074670300](https://github.com/dotsthewarlock/rewards/actions/runs/46074670300) was in progress at handoff. See [UX checkpoint](../docs/dev/2026-11-27_launcher-UX-checkpoint.md). No production deployment; existing L2.1 acceptance remains unchanged.
