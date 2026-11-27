@@ -4,7 +4,7 @@
  */
 (() => {
   'use strict';
-  const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
+  const D=globalThis.RewardsIdentity,L=globalThis.RewardsLegacy;
   const schema='rewards.pending/1';
   const names=['queue','history','giftcards','active','lock','email'];
   const states=['queued','processing','pending','complete','error','duplicate'];

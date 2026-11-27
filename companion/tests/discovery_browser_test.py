@@ -246,7 +246,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
 <div class="confirmation-block"><h3>You earned $15</h3><p class="h5">Walmart eGift Card</p>
 <div class="codes-container"><div class="title">Bonus Code</div><div class="text">000012345678</div><div class="title">PIN</div><div class="text">0000</div></div></div>
 <button class="btn-claim-another-code">Claim Another</button></section></main></body></html>""")
-        for script in ("discovery/core.js","discovery/legacy.js","discovery/success.js"):
+        for script in ("core/identity.js","discovery/core.js","core/legacy.js","discovery/success.js"):
             page.evaluate((root/script).read_text())
         captured=page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)
         assert captured=={"ok":True,"card":{"cardMerchant":"Walmart","valueRecent":"15.00","gcNumber":"000012345678","gcPin":"0000","sourceRedemptionCode":success_code}},captured

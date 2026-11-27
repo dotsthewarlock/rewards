@@ -1,5 +1,5 @@
 'use strict';
-importScripts('discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js','core/public-catalog.js');
+importScripts('core/identity.js','discovery/core.js','core/legacy.js','core/registry.js','core/transactions.js','core/public-catalog.js');
 const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions,R=globalThis.RewardsCampaigns;
 const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(configure);

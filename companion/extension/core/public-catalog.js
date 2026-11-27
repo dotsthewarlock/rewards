@@ -1,7 +1,7 @@
 /* Public directory only. No merchant DOM, legacy storage, or workflow authority. */
 (() => {
  'use strict';
- const D=globalThis.RewardsDiscovery;
+ const D=globalThis.RewardsIdentity;
  const origin='https://getmybonus.ca',source=origin+'/',limit=200,maxBytes=262144;
  const stamp=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(s)&&Number.isFinite(Date.parse(s));
  const exact=(v,keys)=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));

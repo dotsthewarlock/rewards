@@ -61,7 +61,7 @@ def exercise_final(page, ctx, root: Path):
     def setup():
         page.goto(URL)
         page.bring_to_front()
-        for script in ("discovery/core.js","discovery/legacy.js","core/registry.js","core/transactions.js","discovery/foreground.js"):
+        for script in ("core/identity.js","discovery/core.js","core/legacy.js","core/registry.js","core/transactions.js","discovery/foreground.js"):
             page.evaluate((root/script).read_text())
         page.evaluate(BIND)
     def untouched():

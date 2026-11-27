@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import '../extension/core/identity.js';
 import '../extension/discovery/core.js';
-import '../extension/discovery/legacy.js';
+import '../extension/core/legacy.js';
 const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
 const origin='https://getmybonus.ca',slug='CA1126VANW';
 function valid(){

@@ -5,7 +5,7 @@
   const key=(slug,name)=>'bs_rewards:'+slug+':'+name;
   // Adapted from v15 STORE, QUEUE.addCodes, and HIST.has. Strict reads do
   // not silently replace malformed data with an empty cache.
-  const validSlug=slug=>typeof slug==='string'&&globalThis.RewardsDiscovery.slug(slug)===slug;
+  const validSlug=slug=>typeof slug==='string'&&globalThis.RewardsIdentity.slug(slug)===slug;
   const barcode=code=>typeof code==='string'&&/^\d{30}$/.test(code);
   const last4=code=>barcode(code)?code.slice(-4):null;
   const count=x=>Number.isInteger(x)&&x>=0&&x<=999;
@@ -19,7 +19,7 @@
     return rows;
   }
   function summary(storage,slug){
-    if(!globalThis.RewardsDiscovery.slug(slug)||globalThis.RewardsDiscovery.slug(slug)!==slug)
+    if(!globalThis.RewardsIdentity.slug(slug)||globalThis.RewardsIdentity.slug(slug)!==slug)
       return {ok:false,reason:'invalid-campaign'};
     try{
       const queue=readRows(storage,slug,'queue'),history=readRows(storage,slug,'history'),gifts=readRows(storage,slug,'giftcards');
@@ -54,7 +54,7 @@
   // Explicit export only. No migration, recovery, writes, or diagnostic records.
   const fields=Object.freeze(['cardMerchant','valueRecent','gcNumber','gcPin']);
   function exportRows(storage,slug){
-    if(typeof slug!=='string'||globalThis.RewardsDiscovery.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
+    if(typeof slug!=='string'||globalThis.RewardsIdentity.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
     try{
       const rows=readRows(storage,slug,'giftcards');
       if(rows.some(row=>fields.some(k=>typeof row[k]!=='string'||row[k].length>4096)))throw Error('invalid-cache');
@@ -223,7 +223,7 @@
         if(occupied('active')||occupied('lock')||queue.some(r=>['pending','processing'].includes(r.state)))return failEdit('legacy-busy');
         if(queue.some(r=>!states.includes(r.state)||!barcode(r.code)))return failEdit('unreadable-cache');
         const index=raw[indexKey]===null?[]:JSON.parse(raw[indexKey]);
-        if(!Array.isArray(index)||index.some(s=>typeof s!=='string'||!globalThis.RewardsDiscovery.slug(s)))return failEdit('unreadable-cache');
+        if(!Array.isArray(index)||index.some(s=>typeof s!=='string'||!globalThis.RewardsIdentity.slug(s)))return failEdit('unreadable-cache');
         let next,result={ok:true};
         if(op==='importQueue'){
           const plan=await planQueueImport(queue,history,value);

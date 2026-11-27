@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/discovery/core.js';
+import '../extension/core/identity.js';
 import '../extension/core/public-catalog.js';
-const D=globalThis.RewardsDiscovery,C=globalThis.RewardsPublicCatalog;
+const D=globalThis.RewardsIdentity,C=globalThis.RewardsPublicCatalog;
 const origin='https://getmybonus.ca',source=origin+'/';
 const slugs=['CA1126WG1','CA1126WXB','CA1126VANW','CA1226WUDC','CA1226WGT','CA1226WG1'];
 // Synthetic HTML using only public directory identities recorded in campaign-monitoring.md.

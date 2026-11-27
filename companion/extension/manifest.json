@@ -45,8 +45,9 @@
         "https://cardreward.ca/*"
       ],
       "js": [
+        "core/identity.js",
         "discovery/core.js",
-        "discovery/legacy.js",
+        "core/legacy.js",
         "core/registry.js",
         "core/transactions.js",
         "discovery/success.js",

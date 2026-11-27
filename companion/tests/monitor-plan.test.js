@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {HOUR,DAY,HISTORY_LIMIT,nextDue,retryAfterAt,createSchedule,validateSchedule,plan,begin,settle} from '../extension/core/monitor-plan.js';
-const C=globalThis.RewardsPublicCatalog,D=globalThis.RewardsDiscovery;
+const C=globalThis.RewardsPublicCatalog,D=globalThis.RewardsIdentity;
 const at=Date.UTC(2026,10,15,12),iso=n=>new Date(n).toISOString();
 const ids=['CA1126WG1','CA1126VANW'].map(s=>D.publicLink('/'+s+'/en','https://getmybonus.ca'));
 const observed=(before,now,rows=ids,outcome='verified-directory')=>C.merge(before,outcome==='verified-directory'?rows:null,outcome,iso(now));

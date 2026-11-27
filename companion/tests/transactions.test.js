@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/discovery/core.js';
-import '../extension/discovery/legacy.js';
+import '../extension/core/identity.js';
+import '../extension/core/legacy.js';
 import '../extension/core/transactions.js';
 const L=globalThis.RewardsLegacy,T=globalThis.RewardsTransactions;
 const slug='CA1126VANW',code='012345678901234567890123456789',other='000000000000000000000000000001';

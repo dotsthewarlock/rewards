@@ -2,9 +2,9 @@
  * Pure transitions; caller must persist/read back before any hypothetical work.
  * No alarm, storage API, external request, or recovery/reset authority.
  */
-import '../discovery/core.js';
+import './identity.js';
 import './public-catalog.js';
-const C=globalThis.RewardsPublicCatalog,D=globalThis.RewardsDiscovery;
+const C=globalThis.RewardsPublicCatalog,D=globalThis.RewardsIdentity;
 export const HOUR=3600000,DAY=24*HOUR,HISTORY_LIMIT=32;
 const near=72*HOUR,maxTime=Date.UTC(9999,11,31),minTime=Date.UTC(2000,0,1);
 const time=n=>Number.isSafeInteger(n)&&n>=minTime&&n<=maxTime;

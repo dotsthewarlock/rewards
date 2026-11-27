@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
 const base=fileURLToPath(new URL('../',import.meta.url));
 const read=p=>fs.readFileSync(path.join(base,p),'utf8');
-const classic=['discovery/core.js','discovery/legacy.js','core/registry.js','core/transactions.js','discovery/success.js','discovery/foreground.js'];
+const classic=['core/identity.js','discovery/core.js','core/legacy.js','core/registry.js','core/transactions.js','discovery/success.js','discovery/foreground.js'];
 // Explicit acyclic dependency order. Only the project's current named ESM syntax is supported.
 // Fail closed on unrecognized syntax; no runtime loader or remote executable dependency.
 const modules=['core/campaigns.js','core/codec.js','ui/components.js','ui/workspace.js'];
