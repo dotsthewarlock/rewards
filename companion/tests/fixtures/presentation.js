@@ -1,4 +1,5 @@
-import {campaignById} from './campaigns.js';
+// Historical synthetic behavior contract; never packaged or used by the workspace.
+import {campaignById} from '../../extension/core/campaigns.js';
 // Presentation commands only. Never write queue, rewards or transaction outcome.
 export function reducePresentation(state, command) {
   switch (command.type) {

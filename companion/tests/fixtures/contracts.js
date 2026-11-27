@@ -1,3 +1,4 @@
+// Historical synthetic behavior contract; never packaged or used by the workspace.
 // Synthetic session contracts. Production requires document identity and durable attempt IDs.
 export function immutable(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {

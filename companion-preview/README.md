@@ -1,3 +1,2 @@
-# Synthetic V0.1 browser verification snapshot
-Generated preview only, not production extension source or a release. No merchant access, real credentials, or deployment. Modular source remains in the local project package. Existing redeem/ and scan/ are unchanged. R3 safety and acceptance gates remain in force. Current user direction: GPT advances autonomously through verified milestones, lean durable AI-first modular code, no speculative infrastructure, no implicit live claim authorization.
-Trigger the scoped browser smoke test on this development branch.
+# Historical UX preview (retired)
+The standalone early preview is archived for design provenance, not a supported workspace or test entry point. The only maintained synthetic UX sandbox is `companion/extension/sandbox.html`, using the same injected-request workspace as both distributions. Its browser acceptance is in `companion/tests/browser_test.py`. Historical files remain unchanged for reference; never deploy this directory as the companion.

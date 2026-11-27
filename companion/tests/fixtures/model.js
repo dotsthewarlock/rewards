@@ -1,5 +1,6 @@
-import {campaigns,campaignById} from './campaigns.js';
-import {parseCodes} from './codec.js';
+// Historical synthetic behavior contract; never packaged or used by the workspace.
+import {campaigns,campaignById} from '../../extension/core/campaigns.js';
+import {parseCodes} from './fixture-codec.js';
 import {matchesAttempt, immutable} from './contracts.js';
 import {reducePresentation} from './presentation.js';
 // Pure synthetic reducer. No browser API, timing, storage, or network.

@@ -10,7 +10,7 @@ test('bookmarklet build is deterministic, parseable, self-contained, and carries
  assert.match(a.js,/function mountWorkspace/);
  assert.match(a.js,/function exportRows/);
  assert.match(a.js,/function identity/);
- assert.doesNotMatch(a.js,/\bchrome\.runtime\b|\bfetch\s*\(|\beval\s*\(|DEMO-0001/);
+ assert.doesNotMatch(a.js,/\bchrome\.runtime\b|\bfetch\s*\(|\beval\s*\(|DEMO-0001|fixtureCode|isFixtureCode|function makeSandbox|synthetic scenario controls/i);
 });
 test('unsupported origin exits without accessing document or storage',()=>{
  const window={};window.top=window;

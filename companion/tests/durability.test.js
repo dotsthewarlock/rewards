@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState, reduce, currentCache, makeProvider} from '../extension/core/model.js';
-import {attemptIdentity} from '../extension/core/contracts.js';
+import {initialState, reduce, currentCache, makeProvider} from './fixtures/model.js';
+import {attemptIdentity} from './fixtures/contracts.js';
 import {campaigns} from '../extension/core/campaigns.js';
-import {fixtureCode, tsv} from '../extension/core/codec.js';
+import {fixtureCode} from './fixtures/fixture-codec.js';import {tsv} from '../extension/core/codec.js';
 const a=campaigns[0].id,b=campaigns[3].id;
 const run=(s,...commands)=>commands.reduce(reduce,s);
 function ready(s=initialState()) {
