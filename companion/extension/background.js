@@ -5,7 +5,8 @@ const configure=()=>chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:tr
 chrome.runtime.onInstalled.addListener(configure);
 chrome.runtime.onStartup.addListener(configure);
 configure();
-chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(()=>{});
+// Optional defense in depth; content scripts never access diagnostic storage.
+try{Promise.resolve(chrome.storage.local.setAccessLevel?.({accessLevel:'TRUSTED_CONTEXTS'})).catch(()=>{});}catch{}
 
 const originOf=url=>{try{return new URL(url).origin;}catch{return null;}};
 const indexURL=chrome.runtime.getURL('index.html');

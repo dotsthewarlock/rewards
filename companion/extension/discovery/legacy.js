@@ -47,7 +47,7 @@
   // Explicit export only. No migration, recovery, writes, or diagnostic records.
   const fields=Object.freeze(['cardMerchant','valueRecent','gcNumber','gcPin']);
   function exportRows(storage,slug){
-    if(globalThis.RewardsDiscovery.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
+    if(typeof slug!=='string'||globalThis.RewardsDiscovery.slug(slug)!==slug)return {ok:false,reason:'invalid-campaign'};
     try{
       const raw=storage.getItem(key(slug,'giftcards'));
       const rows=raw===null?[]:JSON.parse(raw);
