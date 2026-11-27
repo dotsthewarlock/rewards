@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Get Rewards Companion</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7fc;--surface:#fff;--ink:#191b20;--muted:#464a54;--accent:#2459a5;--on:#fff;--line:#79747e}
+@media(prefers-color-scheme:dark){:root{--bg:#21232b;--surface:#292d37;--ink:#e4e6f0;--muted:#c2c7d2;--accent:#b1c5ff;--on:#082e68;--line:#a4a8b3}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:680px;margin:auto;padding:24px 16px}h1{font-size:28px;line-height:1.2;margin:0 0 8px}h2{font-size:21px;margin:0 0 8px}p{margin:0 0 12px;overflow-wrap:anywhere}
+section{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin:16px 0}a{color:var(--accent);overflow-wrap:anywhere}
+.action,button{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border-radius:24px;background:var(--accent);color:var(--on);border:1px solid transparent;text-decoration:none;font:600 16px/1.4 system-ui,sans-serif;text-align:center;cursor:pointer;width:100%}
+summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}small,.note{color:var(--muted);font-size:14px}ol{padding-left:24px}li{margin-bottom:8px}code{overflow-wrap:anywhere}[hidden]{display:none!important}
+@media(forced-colors:active){.action,button{border:1px solid ButtonText}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid Highlight}}
+</style>
+</head>
+<body>
+<main>
+<h1>Rewards Companion</h1>
+<p>Get the bookmarklet or Chrome extension. Use this same page for updates and help.</p>
+<p><strong>Before opening or changing versions:</strong> Close other rewards tools. If a claim is unfinished or its result is uncertain, check it before switching versions. Keep your original bookmark and diagnostic tool.</p>
+<p id="status" role="status" aria-atomic="true">Checking available versions…</p>
+<button id="retry" type="button" hidden>Try again</button>
+<section aria-labelledby="bookmark-title">
+<h2 id="bookmark-title">Browser bookmark</h2>
+<p>Open Rewards Companion from a saved bookmark. Choose Stable (regular) or Preview (testing only) when it opens.</p>
+<p id="regular" class="note">Checking the regular version…</p>
+<a class="action" href="bootstrap.txt">Get the bookmarklet</a>
+<details>
+<summary>How to save and open it</summary>
+<ol><li>Open the bookmarklet link and copy the entire line, starting with <code>javascript:</code>.</li><li>In Chrome, create or edit a new bookmark. Name it Rewards Companion and paste the complete line into its URL field. Keep your original v15 bookmark.</li><li>Save it. On a supported rewards page, click the saved bookmark and choose a version. Stable may start or resume processing; do not test it on a real claim.</li></ol>
+<p>Keep this bookmark for future updates. If Chrome or the site blocks it, stop; do not use a console workaround.</p>
+</details>
+</section>
+<section aria-labelledby="extension-title">
+<h2 id="extension-title">Chrome extension</h2>
+<p>Open a convenient browser side panel. The regular Companion extension is not released yet.</p>
+<p><strong>Preview — testing only.</strong> Do not use for real claims.</p>
+<p id="preview" class="note">Checking available Preview…</p>
+<a id="package" class="action" hidden download>Download Preview package</a>
+<details>
+<summary>How to install the Preview</summary>
+<ol><li>Download and unzip the package. Open the included <code>install.html</code> for exact verification and testing instructions.</li><li>Unzip the extension ZIP inside into a dedicated folder. Keep the original diagnostic tool and its data; use a separate Chrome profile for testing if practical.</li><li>Open Chrome's Extensions page (<code>chrome://extensions</code>), enable Developer mode, choose Load unpacked and select the extension folder. Use only when authorized for testing.</li></ol>
+<p>Keep the downloaded package for recovery. Do not install or run overlapping rewards tools together.</p>
+</details>
+</section>
+<section aria-labelledby="help-title">
+<h2 id="help-title">Updates and help</h2>
+<details><summary>Update Rewards Companion</summary><p>The saved bookmark opens the current published selection; you do not need to replace it. For the extension, compare the version in Chrome's Extensions page with the version shown here. Before updating, stop and disable the candidate, make a private backup and keep its previous verified package. Follow the new package's installation instructions. Keep the same unpacked extension folder and reload it in Chrome; do not remove the extension or clear site data just to update.</p><p>Do not switch with an unfinished or uncertain claim.</p></details>
+<details><summary>Restore a previous version</summary><p>Stop if a claim is unfinished or uncertain. Keep the independent original v15 bookmark and previous verified extension package. Restore only a known safe version; do not run both at once. The original v15 bookmark is available separately if you need it and it is safe to switch.</p><p><a href="../../redeem/Redeem_Prepaid_Rewards_loader.txt">Original v15 bookmarklet</a></p></details>
+<details><summary>About &amp; version details</summary><p id="exact">Exact published Preview identity is unavailable.</p><p id="checksum" hidden></p><p><a id="provenance" hidden>Publication details</a></p><p>This page lists published versions, not the extension installed on your device.</p><p><a href="https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md">Testing and recovery checklist</a></p></details>
+<details><summary>Report a problem</summary><p>Reports are public and may require a GitHub account. Never include reward codes, card numbers, PINs, email addresses or screenshots with personal information.</p><p><a href="https://github.com/dotsthewarlock/rewards/issues/new" rel="noreferrer">Open the public support form</a></p></details>
+</section>
+<noscript><p>Version lookup requires JavaScript. No Preview package link is available until the published version can be checked.</p></noscript>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const root=new URL('../../',location.href),base='companion/launcher/';
+const sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+const stable=c=>c?.version==='15'&&c.path==='redeem/Redeem_Prepaid_Rewards_v15.js'&&c.sha256==='23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1';
+const preview=c=>{
+  if(typeof c?.version!=='string'||!/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(c.version)||!sha(c.sha256))return false;
+  const folder=base+'releases/'+c.version+'/';
+  return c.path===folder+'rewards-companion-'+c.version+'-bookmarklet.js'||c.path===base+'releases/'+c.version+'.js';
+};
+const packageOK=c=>preview(c)&&c.package===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-development.zip'&&sha(c.packageSha256);
+let loading=false;
+async function refresh(){
+  if(loading)return;loading=true;$('retry').hidden=true;
+  for(const id of ['package','provenance']){$(id).hidden=true;$(id).removeAttribute('href');}
+  $('checksum').hidden=true;$('exact').textContent='Exact published Preview identity is unavailable.';
+  $('regular').textContent='Checking the regular version…';$('preview').textContent='Checking available Preview…';
+  $('status').textContent='Checking available versions…';
+  try{
+    const response=await fetch('channels.json',{cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(10000)});
+    if(!response.ok)throw Error('Unavailable');
+    const data=await response.json();
+    if(data?.schema!==1||!stable(data.stable))throw Error('Invalid release details');
+    $('regular').textContent='Regular (Stable) · version '+data.stable.version;
+    if(preview(data.dev)){
+      const c=data.dev;
+      $('preview').textContent='Preview · version '+c.version.split('-dev-')[0]+(packageOK(c)?'':' — extension download unavailable.');
+      $('exact').textContent='Preview: '+c.version;
+      if(packageOK(c)){
+        $('package').href=new URL(c.package,root).href;$('package').hidden=false;
+        $('checksum').textContent='Package SHA-256: '+c.packageSha256;$('checksum').hidden=false;
+        $('provenance').href=new URL(base+'releases/'+c.version+'/publication.json',root).href;$('provenance').hidden=false;
+      }
+    }else $('preview').textContent='Preview is unavailable.';
+    $('status').textContent='Available versions checked.';
+  }catch{
+    $('status').textContent='Could not check available versions. Try again. No Preview package is offered until the check succeeds.';
+    $('regular').textContent='Regular version could not be checked.';$('preview').textContent='Preview availability could not be checked.';$('retry').hidden=false;$('retry').focus();
+  }finally{loading=false;}
+}
+$('retry').addEventListener('click',refresh);void refresh();
+</script>
+</body>
+</html>
