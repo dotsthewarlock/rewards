@@ -18,6 +18,7 @@ ROOT = "https://dotsthewarlock.github.io/rewards/"
 BASE = "companion/launcher/"
 STABLE = {"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}
 LIMIT = 20 * 1024 * 1024
+EVIDENCE_LIMIT = 16 * 1024
 BASELINE = "0033e6f0366d4850ae13d83bea8fb934ac6d99e5"
 FROZEN = {BASE+"bootstrap.txt":"c4e0820eef012ee59d857926139c5ca5db65a9204821fb58a897f64c9d3ebd2c",
           STABLE["path"]:STABLE["sha256"],"redeem/Redeem_Prepaid_Rewards.js":STABLE["sha256"],
@@ -39,7 +40,14 @@ def git(*args):
 def api(path):
     return cmd("gh", "api", "--method", "GET", "repos/"+REPO+"/"+path)
 
+def valid_id(value):
+    return type(value) is int and 0<value<=2**53-1
+
+def valid_checkpoint(value):
+    return isinstance(value,str) and 0<len(value.strip()) and len(value)<=500
+
 def check_run(run, artifact, commit, run_id):
+    require(valid_id(run_id) and valid_id(artifact.get("id")), "Invalid CI evidence identifiers")
     require(re.fullmatch(r"[a-f0-9]{40}", commit), "Exact candidate SHA required")
     require(run.get("id")==run_id and run.get("head_sha")==commit and
             run.get("head_branch")=="companion-dev" and run.get("event")=="push" and
@@ -131,7 +139,7 @@ def forward(old, commit):
 
 def prepare(args):
     repo=checkout(); current=manifest(repo)
-    require(0<len(args.checkpoint.strip())<=500, "Record the functional checkpoint and acceptance evidence")
+    require(valid_checkpoint(args.checkpoint) and valid_id(args.run), "Record bounded functional checkpoint and exact run ID")
     forward(current["dev"],args.commit)
     run=load(api("actions/runs/"+str(args.run)))
     artifacts=load(api("actions/runs/"+str(args.run)+"/artifacts?per_page=100"))["artifacts"]
@@ -166,15 +174,32 @@ def hosted(path, expected):
         data=response.read(LIMIT+1)
     require(len(data)<=LIMIT and digest(data)==expected,"Hosted bytes mismatch: "+path)
 
+def read_evidence(record):
+    with record.open("rb") as f:
+        data=f.read(EVIDENCE_LIMIT+1)
+    require(len(data)<=EVIDENCE_LIMIT,"Publication evidence too large")
+    evidence=load(data)
+    require(isinstance(evidence,dict) and set(evidence)=={"schema","commit","run","artifact","checkpoint","candidate","previousDev"} and
+            type(evidence.get("schema")) is int and evidence["schema"]==1 and
+            isinstance(evidence.get("commit"),str) and re.fullmatch(r"[a-f0-9]{40}",evidence["commit"]) and
+            valid_id(evidence.get("run")) and valid_id(evidence.get("artifact")) and
+            valid_checkpoint(evidence.get("checkpoint")), "Invalid publication evidence reference")
+    c=evidence["candidate"]
+    verify_entry(c,"dev");verify_entry(evidence["previousDev"],"dev")
+    require(set(c)=={"version","path","sha256","package","packageSha256"} and
+            record.parent.name==c["version"] and c["version"].endswith("-"+evidence["commit"][:12]),"Invalid publication evidence binding")
+    return evidence
+
 def activate(args):
     repo=checkout();current=manifest(repo)
     require(re.fullmatch(r"\d+\.\d+\.\d+-dev-[a-f0-9]{12}",args.version),"Invalid Dev version")
     folder=repo/(BASE+"releases/"+args.version)
-    evidence=load((folder/"publication.json").read_bytes())
+    evidence=read_evidence(folder/"publication.json")
     require(evidence.get("schema")==1 and evidence["previousDev"]==current["dev"],"Dev pointer changed since preparation")
     c=evidence["candidate"];require(c["version"]==args.version,"Version mismatch")
     commit=evidence["commit"];forward(current["dev"],commit)
     artifact=load(api("actions/artifacts/"+str(evidence["artifact"])))
+    require(artifact.get("id")==evidence["artifact"],"Artifact evidence reference mismatch")
     check_run(load(api("actions/runs/"+str(evidence["run"]))),artifact,commit,evidence["run"])
     expected,source=unpack((folder/("rewards-companion-"+args.version+"-development.zip")).read_bytes(),commit,artifact["digest"].split(":")[1])
     require(c==expected and (repo/c["path"]).read_bytes()==source,"Prepared files or evidence changed")
@@ -194,6 +219,7 @@ def activate(args):
     print("Dev pointer prepared. Commit only channels.json and fast-forward push; then verify hosted bytes.")
 
 def verify_entry(c, grade):
+    require(isinstance(c,dict) and isinstance(c.get("version"),str),"Invalid channel entry")
     require(re.fullmatch(r"\d+\.\d+\.\d+-"+grade+r"-[a-f0-9]{12}",c.get("version","")), "Invalid channel version")
     version=c["version"];folder=BASE+"releases/"+version+"/"
     require(c.get("path") in (BASE+"releases/"+version+".js",folder+"rewards-companion-"+version+"-bookmarklet.js") and
@@ -220,14 +246,10 @@ def verify(repo,wait):
     # A package-bearing pointer must have an exact immutable provenance record.
     if current["dev"].get("package"):
         active_record=repo/(BASE+"releases/"+current["dev"]["version"]+"/publication.json")
-        require(load(active_record.read_bytes())["candidate"]==current["dev"],"Active pointer/provenance mismatch")
+        require(read_evidence(active_record)["candidate"]==current["dev"],"Active pointer/provenance mismatch")
     # Also verify staged immutable assets before their pointer is active.
     for record in sorted((repo/(BASE+"releases")).glob("*/publication.json")):
-        evidence=load(record.read_bytes());c=evidence["candidate"]
-        verify_entry(c,"dev")
-        require(evidence.get("schema")==1 and record.parent.name==c["version"] and
-                re.fullmatch(r"[a-f0-9]{40}",evidence.get("commit","")) and
-                c["version"].endswith("-"+evidence["commit"][:12]),"Invalid publication evidence")
+        evidence=read_evidence(record);c=evidence["candidate"]
         expected,source=unpack((repo/c["package"]).read_bytes(),evidence["commit"],c["packageSha256"])
         require(expected==c and (repo/c["path"]).read_bytes()==source,"Prepared immutable artifact mismatch")
         paths.extend([c["path"],c["package"],str(record.relative_to(repo))])

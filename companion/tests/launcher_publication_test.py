@@ -50,7 +50,7 @@ class PublicationTests(unittest.TestCase):
         m.check_run(run,art,COMMIT,RUN)
         for bad in ({"conclusion":"failure"},{"head_branch":"main"},{"head_sha":"b"*40},{"event":"pull_request"},{"path":"other.yml"},{"head_repository":{"full_name":"fork/rewards"}}):
             with self.assertRaises(ValueError):m.check_run({**run,**bad},art,COMMIT,RUN)
-        for bad in ({"expired":True},{"digest":""},{"name":"wrong"},{"size_in_bytes":m.LIMIT+1}):
+        for bad in ({"expired":True},{"digest":""},{"name":"wrong"},{"size_in_bytes":m.LIMIT+1},{"id":True},{"id":0},{"id":"43"}):
             with self.assertRaises(ValueError):m.check_run(run,{**art,**bad},COMMIT,RUN)
     def test_integrity(self):
         data,run,art,files=fixture()
@@ -94,6 +94,19 @@ class PublicationTests(unittest.TestCase):
                 m.prepare(args);self.assertEqual(m.load(target.read_bytes()),current)
                 with self.assertRaises(ValueError):m.prepare(args)
                 activate=SimpleNamespace(version=candidate["version"])
+                record=(repo/candidate["path"]).parent/"publication.json"
+                original=record.read_bytes();evidence=m.load(original)
+                for bad in ({"run":True},{"artifact":"43"},{"artifact":0},{"checkpoint":""},{"checkpoint":"x"*501},{"commit":"b"*40}):
+                    record.write_bytes(m.json_bytes({**evidence,**bad}))
+                    with self.assertRaises(ValueError):m.read_evidence(record)
+                record.write_bytes(b" "* (m.EVIDENCE_LIMIT+1))
+                with self.assertRaises(ValueError):m.read_evidence(record)
+                record.write_bytes(m.json_bytes({**evidence,"artifact":44}))
+                with patch.object(m,"hosted") as hosted:
+                    with self.assertRaises(ValueError):m.activate(activate)
+                    hosted.assert_not_called()
+                self.assertEqual(m.load(target.read_bytes()),current)
+                record.write_bytes(original)
                 with patch.object(m,"hosted",side_effect=ValueError("Not hosted yet")):
                     with self.assertRaises(ValueError):m.activate(activate)
                 self.assertEqual(m.load(target.read_bytes()),current)

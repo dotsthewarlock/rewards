@@ -15,6 +15,7 @@ def entry(grade):
     version="0.6.0-"+grade+"-0123456789ab"
     return dict(version=version,path=base+"releases/"+version+".js",sha256=hashlib.sha256(source.encode()).hexdigest())
 stable=dict(version="15",path="redeem/Redeem_Prepaid_Rewards_v15.js",sha256="23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1")
+stable_source=(project.parent/stable["path"]).read_bytes().decode("utf-8")
 manifest=dict(schema=1,stable=stable,dev=entry("dev"))
 # Verify production pins locally; do not execute either real reward script.
 published=json.loads((project/"launcher/channels.json").read_text())
@@ -27,11 +28,14 @@ with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=os.environ.get("CHROMIUM_EXECUTABLE") or None)
     page=browser.new_page(viewport={"width":320,"height":480})
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
-    def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False):
+    def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False):
         page.goto("https://fixture.invalid/")
-        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base])=>{
+        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource])=>{
           window.launches=0;window.calls=[];window.errors=[];window.fail=fail;window.manifestFail=manifestFail;
           window.alert=s=>errors.push(s);
+          // Positive Stable test checks real bytes and the exact final invocation;
+          // intercept only those bytes at eval, never run v15 or a merchant workflow.
+          if(stablePositive){const nativeEval=window.eval;window.eval=s=>{if(s===stableSource){window.launches++;return;}return (0,nativeEval)(s);};}
           if(busy)document.body.insertAdjacentHTML('beforeend','<div id="bsp"></div>');
           window.fetch=async(url,o)=>{calls.push(url);
             if(o.cache!=='no-store'||o.credentials!=='omit'||o.redirect!=='error'||o.referrerPolicy!=='no-referrer')throw Error('unsafe fetch');
@@ -42,7 +46,7 @@ with sync_playwright() as p:
           };
           document.querySelector('#original').focus();
           window.run=()=> (0,eval)(bootstrap);window.run();
-        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base])
+        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base,stable_positive,stable_source])
     def button(name):return page.get_by_role("button",name=name,exact=True)
     def gone():
         page.get_by_role("dialog").wait_for(state="detached")
@@ -67,9 +71,10 @@ with sync_playwright() as p:
     setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Dev unavailable").wait_for();assert button("Dev unavailable").is_disabled();button("Cancel").click();gone()
     setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Invalid release manifest; nothing launched.").wait_for();assert button("Stable").is_disabled();button("Cancel").click();gone()
     setup();button("Stable · v15").click();page.get_by_text("Script integrity check failed; nothing launched.").wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
+    setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("Testing builds").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
     setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("Testing builds").is_visible();button("Cancel").click();gone()
     setup(delay=True);button("Dev · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
     page.emulate_media(color_scheme="dark");setup();ready();assert page.get_by_role("dialog").evaluate("(e)=>getComputedStyle(e).backgroundColor")=="rgb(33, 35, 43)";page.keyboard.press("Escape");gone()
     browser.close()
-print("15 synthetic launcher scenarios PASS")
+print("16 synthetic launcher scenarios PASS")

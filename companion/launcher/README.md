@@ -10,7 +10,7 @@ The optional Test selector is hidden unless the manifest provides a valid versio
 
 ## Gated Dev-only publication
 
-Use an isolated, clean checkout of current main with the existing authorized GitHub CLI and Git credentials. Only choose a coherent checkpoint with recorded applicable safety, privacy and compatibility evidence. A green CI push alone is not promotion. The publication helper validates the exact companion-dev push run, successful workflow, matching nonexpired artifact, outer digest, inner checksums, package and extension metadata and forward ancestry. It also verifies the self-contained bookmark URL/source relationship, frozen bootstrap and both original v15 sources/loader, expected extension runtime membership, rollback baseline and all staged immutable assets. It never pushes, grants permissions or edits Stable. No new write-capable CI workflow.
+Use an isolated, clean checkout of current main with the existing authorized GitHub CLI and Git credentials. Only choose a coherent checkpoint with recorded applicable safety, privacy and compatibility evidence. A green CI push alone is not promotion. The publication helper validates the exact companion-dev push run, successful workflow, matching nonexpired artifact, outer digest, inner checksums, package and extension metadata and forward ancestry. It validates bounded publication evidence (exact commit, numeric run/artifact identifiers and checkpoint; activation rechecks returned artifact identity). It also verifies the self-contained bookmark URL/source relationship, frozen bootstrap and both original v15 sources/loader, expected extension runtime membership, rollback baseline and all staged immutable assets. It never pushes, grants permissions or edits Stable. No new write-capable CI workflow.
 
 1. Run `python companion/launcher/tools/publication.py prepare --commit <40-character SHA> --run <CI run ID> --checkpoint "<functional outcome and evidence>"`.
 2. Commit only the new immutable version folder (bookmarklet source, exact outer development ZIP containing the corresponding extension package and self-contained bookmarklet, publication.json). Fast-forward push against the reviewed main head; do not force. Wait for Pages success.
@@ -31,7 +31,7 @@ Initial isolated M3 browser verification: 27dba4467b65fd7787f3bd280dc05605c89720
 
 Loader rollback: restore only loader.js from a known-good commit using a new fast-forward commit; keep bootstrap, artifacts and pointers intact. Dev rollback: explicitly restore a previously verified Dev pointer after checking hosted bytes and absence of unresolved attempts; never automatically roll back or alter Stable. Original v15 bookmark remains independent, not an authorization to switch tools mid-transaction.
 
-Native acceptance: see native-acceptance.md. Integrate this supplement into the existing Companion native session; no separate live claim required.
+Native acceptance: use the single [Companion native checklist](https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md). No separate launcher live claim is required.
 
 
 ## L2.1 verified deployment
