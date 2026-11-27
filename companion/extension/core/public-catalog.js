@@ -4,6 +4,7 @@
  const D=globalThis.RewardsDiscovery;
  const origin='https://getmybonus.ca',source=origin+'/',limit=200,maxBytes=262144;
  const stamp=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(s)&&Number.isFinite(Date.parse(s));
+ const exact=(v,keys)=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
  const outcomes=['never','verified-directory','unavailable','restricted'];
  const empty=()=>({schema:'rewards.public-catalog/1',source,checkedAt:null,outcome:'never',entries:[]});
  function parseDirectory(html){
@@ -37,23 +38,26 @@
    return found.size?[...found.values()]:null;
  }
  function validate(value){
-   if(!value||value.schema!=='rewards.public-catalog/1'||value.source!==source||
+   if(!exact(value,['schema','source','checkedAt','outcome','entries'])||value.schema!=='rewards.public-catalog/1'||value.source!==source||
      !outcomes.includes(value.outcome)||!(value.checkedAt===null||stamp(value.checkedAt))||
      !Array.isArray(value.entries)||value.entries.length>limit)return null;
    if(value.outcome==='never'?(value.checkedAt!==null||value.entries.length):!stamp(value.checkedAt))return null;
    const keys=new Set(),entries=[];
    for(const e of value.entries){
-     const id=D.publicLink(e?.url,origin);
+     if(!exact(e,['origin','campaign','key','url','firstSeen','lastSeen','listed']))return null;
+     const id=D.publicLink(e.url,origin);
      if(!id||id.origin!==e.origin||id.campaign!==e.campaign||id.key!==e.key||keys.has(id.key)||
         !stamp(e.firstSeen)||!stamp(e.lastSeen)||e.firstSeen>e.lastSeen||e.lastSeen>value.checkedAt||
-        typeof e.listed!=='boolean'||(e.listed&&e.lastSeen!==value.checkedAt))return null;
+        typeof e.listed!=='boolean'||(e.listed&&(value.outcome!=='verified-directory'||e.lastSeen!==value.checkedAt)))return null;
      keys.add(id.key);
      entries.push({...id,firstSeen:e.firstSeen,lastSeen:e.lastSeen,listed:e.listed});
    }
+   if(value.outcome==='verified-directory'&&!entries.some(e=>e.listed))return null;
    return {schema:'rewards.public-catalog/1',source,checkedAt:value.checkedAt,outcome:value.outcome,entries};
  }
  function merge(prior,ids,outcome,at){
-   if(!validate(prior)||!stamp(at)||prior.checkedAt>at||!outcomes.includes(outcome)||outcome==='never')return null;
+   prior=validate(prior);
+   if(!prior||!stamp(at)||prior.checkedAt>at||!outcomes.includes(outcome)||outcome==='never')return null;
    const rows=new Map(prior.entries.map(e=>[e.key,{...e,listed:false}]));
    if(outcome==='verified-directory'){
      if(!Array.isArray(ids)||!ids.length)return null;

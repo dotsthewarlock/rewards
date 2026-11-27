@@ -89,6 +89,39 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert diagnostic_export["export"]["provenance"]["evidence"]=="structural-only"
             assert "TEST_SECRET_CARD" not in json.dumps(diagnostic_export)
             assert diagnostic_export["export"]["records"]==records
+            # Exercise the actual index sender and trusted manual click against a
+            # worker-local synthetic response, never the public network.
+            worker.evaluate("""()=>{globalThis.catalogFetchCalls=0;globalThis.catalogMode='ok';
+              globalThis.fetch=async(url,opts)=>{
+                if(url!=='https://getmybonus.ca/'||opts.method!=='GET'||opts.credentials!=='omit'||opts.redirect!=='error')throw Error('unexpected request');
+                catalogFetchCalls++;
+                const html='<h2>Select the qualifying offer to claim your bonus eGift card</h2>'+
+                  ['CA1126WG1','CA1126WXB','CA1126VANW','CA1226WUDC','CA1226WGT','CA1226WG1'].map(s=>'<a href="/'+s+'/en">PRIVATE_FIXTURE</a>').join('');
+                const r=new Response(catalogMode==='ok'?html:'Access denied',{status:catalogMode==='restricted'?403:200,headers:{'content-type':'text/html'}});
+                Object.defineProperty(r,'url',{value:url});return r;
+              };}""")
+            panel.locator('[data-action="navigate"][data-value="campaigns"]').click()
+            expect(panel.locator("main")).to_contain_text("Not yet checked")
+            assert worker.evaluate("catalogFetchCalls")==0
+            panel.get_by_role("button",name="Refresh public directory").click()
+            expect(panel.locator("main")).to_contain_text("CA1226WG1",timeout=10000)
+            catalog=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'getCatalog'})")["catalog"]
+            assert len(catalog["entries"])==6 and catalog["outcome"]=="verified-directory"
+            assert "PRIVATE_FIXTURE" not in json.dumps(catalog)
+            assert "TEST_SECRET_CARD" not in json.dumps(catalog)
+            assert worker.evaluate("catalogFetchCalls")==1
+            assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+            worker.evaluate("catalogMode='restricted'")
+            panel.get_by_role("button",name="Refresh public directory").click()
+            expect(panel.locator("main")).to_contain_text("Access restricted")
+            expect(panel.get_by_role("button",name="Refresh public directory")).to_be_disabled()
+            stopped=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'refreshCatalog'})")["catalog"]
+            assert stopped["outcome"]=="restricted" and len(stopped["entries"])==6
+            assert all(not e["listed"] for e in stopped["entries"])
+            assert worker.evaluate("catalogFetchCalls")==2
+            assert worker.evaluate("async()=> (await chrome.storage.local.get('publicCampaignCatalogV1')).publicCampaignCatalogV1")==stopped
+            assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+            print("M1 manual catalog transport, privacy, restricted stop and unchanged legacy state PASS",flush=True)
             # Invalid existing observations must not be silently discarded by recording.
             original=worker.evaluate("async()=> (await chrome.storage.local.get('structuralRecords')).structuralRecords")
             worker.evaluate("rows=>chrome.storage.local.set({structuralRecords:[...rows,{invalid:true}]})",original)

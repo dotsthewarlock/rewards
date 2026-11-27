@@ -24,7 +24,7 @@ manifest=json.loads((src/"manifest.json").read_text())
 files={"manifest.json",manifest["background"]["service_worker"],manifest["side_panel"]["default_path"],
        *manifest["icons"].values(),*manifest["action"]["default_icon"].values(),
        *(p for entry in manifest["content_scripts"] for p in entry["js"]),
-       "core/campaigns.js","core/codec.js","ui/components.js","ui/workspace.js",
+       "core/campaigns.js","core/codec.js","core/public-catalog.js","ui/components.js","ui/workspace.js",
        "ui/live.js","ui/tokens.css","ui/components.css"}
 def archive():
     buf=io.BytesIO()

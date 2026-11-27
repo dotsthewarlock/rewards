@@ -41,7 +41,22 @@ test('failure and disappearance retain last observations without inferring expir
  assert.equal(partial.entries[0].firstSeen,a);
  assert.equal(partial.entries[0].lastSeen,b);
  assert.equal(C.validate({...initial,entries:[...initial.entries,initial.entries[0]]}),null);
- assert.doesNotMatch(JSON.stringify(initial),/eligible|reward|private|stock/i);
+ assert.deepEqual(Object.keys(initial).sort(),['schema','source','checkedAt','outcome','entries'].sort());
+ assert.equal(initial.schema,'rewards.public-catalog/1');
+ for(const row of initial.entries)assert.deepEqual(Object.keys(row).sort(),['origin','campaign','key','url','firstSeen','lastSeen','listed'].sort());
+ assert.doesNotMatch(JSON.stringify(initial.entries),/eligible|reward|private|stock/i);
+});
+test('privacy boundary rejects extra fields and never merges private or arbitrary input',()=>{
+ const initial=C.merge(C.empty(),C.parseDirectory(html),'verified-directory',a);
+ for(const field of ['reward','email','gcNumber','gcPin','rawHtml','queue','terms','stock']){
+   const contaminated={...initial,entries:[{...initial.entries[0],[field]:'PRIVATE_FIXTURE'},...initial.entries.slice(1)]};
+   assert.equal(C.validate(contaminated),null);
+   assert.equal(C.merge(contaminated,null,'unavailable',b),null);
+ }
+ assert.equal(C.validate({...initial,private:'PRIVATE_FIXTURE'}),null);
+ assert.equal(C.validate({...initial,outcome:'restricted'}),null);
+ const enriched=C.parseDirectory(html+'<a href="/CA1126WG1/en" title="PRIVATE_FIXTURE">PRIVATE_FIXTURE</a>');
+ assert.doesNotMatch(JSON.stringify(C.merge(C.empty(),enriched,'verified-directory',a)),/PRIVATE_FIXTURE/);
 });
 function response(body,status=200,url=source,headers={'content-type':'text/html'}){
  const r=new Response(body,{status,headers});Object.defineProperty(r,'url',{value:url});return r;
