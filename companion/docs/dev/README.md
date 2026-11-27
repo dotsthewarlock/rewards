@@ -19,3 +19,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 foreground authorization developer handoff (2026-11-27)](2026-11-27_V0.2_foreground.md): verified exact attempt binding, native final-form transport, source audit and remaining gates.
 
 - [V0.2 foreground architect review (2026-11-27)](2026-11-27_V0.2_foreground-review.md): verified final-form fixture integration, remaining evidence/recovery gaps and stream convention.
+
+- [V0.2 incomplete session review (2026-11-27)](2026-11-27_V0.2_blocked-session-review.md): unchanged implementation head, reported execution restriction and updated handoff interface.
