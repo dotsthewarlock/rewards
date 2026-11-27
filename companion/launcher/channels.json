@@ -7,7 +7,9 @@
   },
   "dev": {
     "version": "0.6.0-dev-de3cb5d39410",
-    "path": "companion/launcher/releases/0.6.0-dev-de3cb5d39410.js",
-    "sha256": "895c9b38f9954b1604a455816ae3fee9e9e20ce39cf50d726fe9b8cbfecb81ec"
+    "path": "companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-bookmarklet.js",
+    "sha256": "895c9b38f9954b1604a455816ae3fee9e9e20ce39cf50d726fe9b8cbfecb81ec",
+    "package": "companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-development.zip",
+    "packageSha256": "0d698b40f7b32f26261865243d4bdb68ab70b6214a33f17dddfd87eeda3badec"
   }
 }
