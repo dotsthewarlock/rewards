@@ -23,3 +23,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 incomplete session review (2026-11-27)](2026-11-27_V0.2_blocked-session-review.md): unchanged implementation head, reported execution restriction and updated handoff interface.
 
 - [V0.2 independent verification developer handoff (2026-11-27)](2026-11-27_V0.2_independent-verification.md): static accessibility/packaging, read-only integrity, recovery guidance and CI status.
+
+- [V0.2 independent verification architect review (2026-11-27)](2026-11-27_V0.2_independent-review.md): CI retry and handoff verified, next independent UX/acceptance priorities.
