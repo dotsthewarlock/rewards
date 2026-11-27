@@ -37,3 +37,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 consolidated development package (2026-11-27)](2026-11-27_V0.2_development-package.md): clipboard draft, diagnostic retention/provenance, deterministic artifact and rollback, native acceptance checklist.
 
 - [V0.2 package and monitoring roadmap architect review (2026-11-27)](2026-11-27_V0.2_package-monitoring-review.md): consolidated checkpoint, verified package CI, separate Canadian monitoring enhancement.
+
+- [V0.3/M1 public catalog developer checkpoint (2026-11-27)](2026-11-27_V0.3_M1_catalog.md): exact identity, manual catalog, privacy correction, synthetic CI and downloaded package verification.
