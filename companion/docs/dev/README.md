@@ -33,3 +33,5 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - [V0.2 single-record reveal developer handoff (2026-11-27)](2026-11-27_V0.2_single-record-reveal.md): snapshot-bound single-row privacy, stale rejection, connected MV3 sender and expiry acceptance.
 
 - [V0.2 single-record reveal architect review (2026-11-27)](2026-11-27_V0.2_single-record-review.md): privacy correction accepted, consolidated remaining independent work.
+
+- [V0.2 consolidated development package (2026-11-27)](2026-11-27_V0.2_development-package.md): clipboard draft, diagnostic retention/provenance, deterministic artifact and rollback, native acceptance checklist.
