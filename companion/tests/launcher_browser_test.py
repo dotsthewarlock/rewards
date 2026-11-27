@@ -29,7 +29,8 @@ for key in ("stable","dev"):
 faulthandler.dump_traceback_later(180, exit=True)
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path=os.environ.get("CHROMIUM_EXECUTABLE") or None)
-    page=browser.new_page(viewport={"width":320,"height":480})
+    context=browser.new_context(viewport={"width":320,"height":480})
+    page=context.new_page()
     page.set_default_timeout(10000)
     page.set_default_navigation_timeout(10000)
     scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview explicit Open","change then cancel preserves preference","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular explicit Open","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices"])
