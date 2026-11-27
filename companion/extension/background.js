@@ -16,12 +16,21 @@ const serial=job=>{const result=recordingTail.then(job);recordingTail=result.cat
 const diagnosticReasons=Object.freeze(['initial','structure-change','document-restored','recording-enabled','control-interaction','selection-change']);
 const eventLimit=2000;
 const validTime=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(x);
+// Chrome storage does not preserve dictionary insertion order. Verify exact JSON
+// structure and values, including array order; never discard extra properties.
+function sameStoredValue(a,b){
+  if(a===b)return true;
+  if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return false;
+  if(Array.isArray(a)&&a.length!==b.length)return false;
+  const keys=Object.keys(a);
+  return keys.length===Object.keys(b).length&&keys.every(k=>Object.hasOwn(b,k)&&sameStoredValue(a[k],b[k]));
+}
 async function diagnostics(){
   const x=await chrome.storage.local.get({diagnosticsEnabled:false,structuralRecords:[],structuralEvents:[]});
   const records=[],indices=new Map();
   if(Array.isArray(x.structuralRecords))for(const [index,row] of x.structuralRecords.slice(0,500).entries()){
     const report=D.validate(row?.report,row?.report?.origin);
-    if(report?.status==='recognized'&&validTime(row.at)){
+    if(report?.status==='recognized'&&Object.keys(row).length===2&&Object.hasOwn(row,'at')&&validTime(row.at)){
       indices.set(index,records.length);records.push({at:row.at,report});
     }
   }
@@ -51,7 +60,7 @@ async function record(report,reason='structure-change'){
     try{
       await chrome.storage.local.set({structuralRecords:records,structuralEvents:events});
       const readback=await chrome.storage.local.get(['structuralRecords','structuralEvents']);
-      if(JSON.stringify(readback.structuralRecords)!==JSON.stringify(records)||JSON.stringify(readback.structuralEvents)!==JSON.stringify(events))
+      if(!sameStoredValue(readback.structuralRecords,records)||!sameStoredValue(readback.structuralEvents,events))
         return {ok:false,reason:'diagnostics-write-unverified'};
       return {ok:true};
     }catch{return {ok:false,reason:'diagnostics-write-unverified'};}

@@ -166,8 +166,23 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         initial=report["report"]
         variant=dict(initial,labels=[])
         old=worker.evaluate("async()=>await diagnostics()")
-        assert worker.evaluate("r=>record(r,'structure-change')",variant)["ok"]
-        assert worker.evaluate("r=>record(r,'control-interaction')",initial)["ok"]
+        assert not old["blocked"], "unexpected retention or timeline validation block"
+        # Reproduce the former verifier against the actual Chrome storage round-trip.
+        # Temporary fixture key only; compare canonical expected records with the raw value.
+        probe=worker.evaluate("""async r=>{
+          const data=await diagnostics(),at=new Date().toISOString(),records=[...data.records,{at,report:RewardsDiscovery.validate(r,r.origin)}];
+          const events=[...data.events,{at,snapshotAt:at,snapshot:records.length-1,reason:'structure-change'}];
+          await chrome.storage.local.set({diagnosticReadbackFixture:{records,events}});
+          const stored=(await chrome.storage.local.get('diagnosticReadbackFixture')).diagnosticReadbackFixture;
+          await chrome.storage.local.remove('diagnosticReadbackFixture');
+          return {oldReason:JSON.stringify(stored.records)!==JSON.stringify(records)||JSON.stringify(stored.events)!==JSON.stringify(events)?'diagnostics-write-unverified':'ok',
+            exact:sameStoredValue(stored.records,records)&&sameStoredValue(stored.events,events)};
+        }""",variant)
+        print("Former verifier on Chrome round-trip:",probe,flush=True)
+        assert probe["exact"], probe
+        for packet,reason in [(variant,"structure-change"),(initial,"control-interaction")]:
+            response=worker.evaluate("([r,reason])=>record(r,reason)",[packet,reason])
+            assert response["ok"], response
         timeline=worker.evaluate("async()=>await diagnostics()")
         assert len(timeline["records"])==len(old["records"])+1
         assert len(timeline["events"])==len(old["events"])+2
@@ -175,6 +190,18 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert timeline["events"][-1]["reason"]=="control-interaction"
         assert not worker.evaluate("r=>record(r,'SECRET_EVENT')",initial)["ok"]
         assert "SECRET_EVENT" not in json.dumps(worker.evaluate("async()=>await diagnostics()"))
+        assert worker.evaluate("""()=>sameStoredValue({b:[1,{z:2,a:3}],a:0},{a:0,b:[1,{a:3,z:2}]})&&
+          !sameStoredValue({a:[1,2]},{a:[2,1]})&&!sameStoredValue({a:1},{a:'1'})&&
+          !sameStoredValue({a:1},{a:1,extra:true})&&!sameStoredValue([null],[])&&
+          !sameStoredValue({a:null},{a:0})""")
+        # Mismatched snapshot linkage must block and preserve all existing data.
+        worker.evaluate("async events=>chrome.storage.local.set({structuralEvents:events})",timeline["events"]+[dict(timeline["events"][-1],snapshot=999)])
+        assert worker.evaluate("async()=> (await diagnostics()).blocked")
+        response=worker.evaluate("r=>record(r)",initial)
+        assert response=={"ok":False,"reason":"diagnostics-retention-blocked"}, response
+        assert len(worker.evaluate("async()=> (await chrome.storage.local.get('structuralEvents')).structuralEvents"))==len(timeline["events"])+1
+        worker.evaluate("async events=>chrome.storage.local.set({structuralEvents:events})",timeline["events"])
+        assert not worker.evaluate("async()=> (await diagnostics()).blocked")
         print("bounded deduplicated diagnostic timeline retains repeated states and fixed reasons PASS",flush=True)
         # Explicit edits only after replacing the fixture's pending row with ready.
         page.evaluate("""()=>{document.body.dataset.slug='CA1126VANW';localStorage.setItem('bs_rewards:CA1126VANW:queue',JSON.stringify([{id:'legacy',code:'000000000000000000000000000001',state:'queued'}]));}""")
