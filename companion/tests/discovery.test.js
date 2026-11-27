@@ -149,11 +149,12 @@ test('masked reward browsing never includes full reward credentials or arbitrary
 });
 
 test('individual reveal binds exact snapshot, rejects masked collisions after reorder or replacement, keeps bulk export separate',()=>{
- const first={cardMerchant:'Fixture A',valueRecent:'10.00',gcNumber:'SYNTHETIC_A1234',gcPin:'test-A'};
- const second={cardMerchant:'Fixture B',valueRecent:'10.00',gcNumber:'SYNTHETIC_B1234',gcPin:'test-B'};
+ const first={cardMerchant:'Fixture A',valueRecent:'10.00',gcNumber:'SYNTHETICA1234',gcPin:'test-A'};
+ const second={cardMerchant:'Fixture B',valueRecent:'10.00',gcNumber:'SYNTHETICB1234',gcPin:'test-B'};
  let raw=JSON.stringify([first,second]);
  const storage={getItem:k=>k===L.key(slug,'giftcards')?raw:null,setItem(){throw Error('read-only');}};
  const d=L.details(storage,slug);
+ assert.deepEqual(d.rewards,[{last4:'1234',value:'10.00'},{last4:'1234',value:'10.00'}]);
  assert.equal(L.details(storage,slug).rewardSnapshot,d.rewardSnapshot);
  const one=L.revealReward(storage,slug,d.rewardSnapshot,1);
  assert.deepEqual(one,{ok:true,snapshot:d.rewardSnapshot,index:1,row:second});

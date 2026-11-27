@@ -1,7 +1,7 @@
 """Native isolated-world discovery against synthetic route fulfillment, never a real merchant."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, show_linked_success, assert_final_captured
 root=Path(__file__).resolve().parents[1]/"extension"
@@ -66,6 +66,27 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert not worker.evaluate("([t,s])=>revealTab(t,s,0)",[report["target"],snapshot])["ok"]
         assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
         print("MV3 connected single-record reveal transport, stale document and changed cache rejected PASS",flush=True)
+        # Exercise the actual extension workspace sender with the merchant fixture active.
+        # A regular extension tab is not the native side-panel surface; the trusted
+        # click/reveal UI lifecycle remains covered by the connected bookmarklet suite.
+        panel=ctx.new_page()
+        try:
+            panel.goto(f"chrome-extension://{ext_id}/index.html")
+            page.bring_to_front()
+            expect(panel.locator("#context")).to_contain_text("Walmart Canada",timeout=15000)
+            expect(panel.locator("main")).to_contain_text("1 pending")
+            connected=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
+            assert connected["target"]["tabId"]==tab
+            assert "TEST_SECRET_CARD" not in json.dumps(connected["details"])
+            selection=connected["details"]["rewardSnapshot"]
+            row=panel.evaluate("([t,s])=>chrome.runtime.sendMessage({type:'companion.workspace',op:'revealReward',target:t,snapshot:s,index:0})",[connected["target"],selection])
+            assert row=={"ok":True,"snapshot":selection,"index":0,"row":exported["rows"][0]}
+            assert not panel.evaluate("([t,s])=>chrome.runtime.sendMessage({type:'companion.workspace',op:'revealReward',target:t,snapshot:s,index:0})",[connected["target"],snapshot])["ok"]
+            expect(panel.locator("main")).not_to_contain_text("TEST_SECRET_CARD")
+            print("Connected MV3 index workspace, actual sender validation and read-only single-row response PASS",flush=True)
+        finally:
+            panel.close()
+            page.bring_to_front()
         draft="Receipt: 000000000000000000000000000001\n012345678901234567890123456789"
         preview=worker.evaluate("([target,text])=>previewTab(target,text)",[report["target"],draft])
         assert preview=={"ok":True,"queued":1,"duplicates":1,"overflow":0,"recognized":2}

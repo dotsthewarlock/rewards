@@ -19,6 +19,7 @@ with sync_playwright() as p:
     errors=[]
     page.on("pageerror",lambda error:errors.append(str(error)))
     page.goto("https://getmybonus.ca/CA1126VANW/en")
+    page.clock.install()
     page.evaluate(script)
     host=page.locator("#rewards-companion-dev")
     expect(host).to_contain_text("Legacy cache management")
@@ -43,6 +44,10 @@ with sync_playwright() as p:
     expect(host).not_to_contain_text("CHANGED_FIXTURE")
     page.evaluate("localStorage.setItem('bs_rewards:CA1126VANW:giftcards',window.originalGift)")
     host.get_by_role("button",name="Refresh connection").click()
+    host.get_by_role("button",name="Reveal reward 1").click()
+    expect(host).to_contain_text("TEST_SECRET_CARD")
+    page.clock.fast_forward(31000)
+    expect(host).not_to_contain_text("TEST_SECRET_CARD")
     host.get_by_role("button",name="Reveal reward 1").click()
     expect(host).to_contain_text("TEST_SECRET_CARD")
     host.get_by_role("button",name="Settings",exact=True).click()
