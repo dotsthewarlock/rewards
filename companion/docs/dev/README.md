@@ -9,6 +9,7 @@ Historical evidence, not current policy. AGENTS.md and companion/README.md gover
 - Architect review: compare from last reviewed SHA, inspect affected risk/contract boundaries and actual evidence; record brief verified/needs correction/deferred outcome, rationale, next focus. Change AGENTS/README/contract only where decision or current status changes. If nothing material changed, a short review note or commit reference suffices; no approval gate. Preserve historical records; append or correct transparently.
 
 ## Records
+- [Script Loader UX refinement (2026-11-27)](2026-11-27_launcher-UX-checkpoint.md): module acceptance and integration handshake; current deployed status in [Companion README](../../README.md).
 - [V0.2 shared-core checkpoint (2026-11-27)](2026-11-27_V0.2_shared-core.md): read-only shared workspace/build and verified limitations.
 - [Authority reconciliation (2026-11-27)](2026-11-27_authority.md): one-time architect source audit, compact review contract.
 
