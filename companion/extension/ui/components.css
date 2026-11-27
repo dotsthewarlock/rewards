@@ -3,3 +3,6 @@
 .review-data{overflow-wrap:anywhere;min-width:0}.review-data .mono{white-space:normal;overflow-wrap:anywhere}
 
 .stack{grid-template-columns:minmax(0,1fr)}.stack>*{min-width:0}.mono{overflow-wrap:anywhere}
+
+/* Links and replacement-focus targets use the same verified semantic tokens. */
+a{color:var(--primary);text-decoration:underline}a:focus-visible,main:focus-visible{outline:3px solid var(--focus);outline-offset:2px}textarea::placeholder,input::placeholder{color:var(--muted);opacity:1}

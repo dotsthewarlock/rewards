@@ -40,3 +40,5 @@ test('campaign and diagnostic views distinguish capability, restriction, stalene
  state.diagnostics.blocked=true;assert.match(workspaceSettingsView({state}),/data-action="captureDiagnostics" disabled/);
  assert.doesNotMatch(workspaceSettingsView({state,recording:false}),/data-action="captureDiagnostics"/);
 });
+
+test('ambiguous product/reward choice remains visible and cannot enter final review',()=>{const state=fixture(),multiple=campaignById('CA1126PZFT');const html=workspaceQueueView({state,cp:multiple});assert.match(html,/Multiple product or reward choices/);assert.doesNotMatch(html,/Review final claim/);assert.match(workspaceCampaignsView({cp:campaignById('CA1126DTZFT')}),/Avondale participation inferred/);assert.match(workspaceRewardsView({state}),/Pending claims are not counted/);});

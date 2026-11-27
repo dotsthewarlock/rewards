@@ -16,7 +16,7 @@ function catalogView({recording,catalog,catalogBusy,catalogError,now}){
 
 export function workspaceCampaignsView({cp,recording=true,catalog=null,catalogBusy=false,catalogError=false,now=Date.now()}){
  let body='';
-   body='<h2>Campaigns</h2>'+(cp?'<section class="surface"><strong>'+esc(cp.name)+'</strong><p>'+esc(cp.products.join(' / '))+'</p><p>'+esc(cp.rewards.join(' / '))+'</p><p>Published claim deadline: '+esc(cp.deadline)+'</p></section>':'<p>No recognized campaign metadata.</p>')+'<p>Recognition is structural evidence only, not verified eligibility or stock.</p>'+catalogView({recording,catalog,catalogBusy,catalogError,now});
+   body='<h2>Campaigns</h2>'+(cp?'<section class="surface"><strong>'+esc(cp.name)+'</strong><p>'+esc(cp.products.join(' / '))+'</p><p>'+esc(cp.rewards.join(' / '))+'</p><p>Published claim deadline: '+esc(cp.deadline)+'</p>'+(cp.note?'<p>'+esc(cp.note)+'</p>':'')+'</section>':'<p>No recognized campaign metadata.</p>')+'<p>Recognition is structural evidence only, not verified eligibility or stock.</p>'+catalogView({recording,catalog,catalogBusy,catalogError,now});
 
  return body;
 }

@@ -51,7 +51,7 @@ test('light and dark semantic color pairs meet static WCAG contrast thresholds',
    ['muted','surface',4.5],['muted','container',4.5],
    ['on-primary','primary',4.5],['on-selected','selected',4.5],
    ['on-error','error-bg',4.5],['success','surface',4.5],
-   ['error','surface',4.5],['primary','surface',4.5],
+   ['error','surface',4.5],['primary','surface',4.5],['primary','container',4.5],
    ['focus','surface',3],['focus','container',3],
    ['outline','surface',3],['outline','container',3]
   ]){

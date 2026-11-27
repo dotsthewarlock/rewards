@@ -61,7 +61,7 @@ function render(){
  if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
  else if(action){
    const next=[...root.querySelectorAll('[data-action]')].find(el=>el.dataset.action===action&&el.dataset.value===value&&!el.disabled);
-   if(next)next.focus({preventScroll:true});
+   if(next)next.focus({preventScroll:true});else $('workspace').focus({preventScroll:true});
  }
 }
 async function refresh(){
