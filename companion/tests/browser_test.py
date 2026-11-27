@@ -11,14 +11,14 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
     try:
         worker = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker",timeout=15000)
         ext_id = worker.url.split("/")[2]
-        assert worker.evaluate("chrome.runtime.getManifest().permissions") == ["sidePanel"]
+        assert worker.evaluate("chrome.runtime.getManifest().permissions") == ["sidePanel","storage"]
         worker.evaluate("async () => { for (let i=0;i<30;i++){if ((await chrome.sidePanel.getPanelBehavior()).openPanelOnActionClick) return true;await new Promise(r=>setTimeout(r,100));}throw new Error('toolbar behavior not configured'); }")
         assert worker.evaluate("async () => (await chrome.sidePanel.getOptions({})).path") == "index.html"
         print("MV3 loaded; native side panel configuration PASS",flush=True)
         page = ctx.new_page()
         errors=[]
         page.on("pageerror",lambda error:errors.append(str(error)))
-        page.goto(f"chrome-extension://{ext_id}/index.html")
+        page.goto(f"chrome-extension://{ext_id}/prototype.html")
         button=lambda name:page.get_by_role("button",name=name,exact=True)
         main=page.locator("main")
         button("Load demo codes").focus()
@@ -69,5 +69,9 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         expect(main).to_contain_text("0 ready")
         assert not errors, errors
         print("reload is inert; no script errors PASS",flush=True)
+        page.goto(f"chrome-extension://{ext_id}/index.html")
+        expect(page.locator("main")).to_contain_text("Read-only legacy cache")
+        expect(page.get_by_role("button",name="Authorize simulated claim")).to_have_count(0)
+        print("production-facing workspace contains no demo claim controls PASS",flush=True)
     finally:
         ctx.close()

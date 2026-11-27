@@ -1,1 +1,57 @@
-{"manifest_version":3,"name":"Rewards Companion - UX prototype","version":"0.1.0","description":"Synthetic UX evaluation only. No merchant access.","permissions":["sidePanel"],"background":{"service_worker":"background.js"},"side_panel":{"default_path":"index.html"},"action":{"default_title":"Open Rewards Companion prototype","default_icon":{"16":"icons/icon16.png","32":"icons/icon32.png","48":"icons/icon48.png","128":"icons/icon128.png"}},"icons":{"16":"icons/icon16.png","32":"icons/icon32.png","48":"icons/icon48.png","128":"icons/icon128.png"}}
+{
+  "manifest_version": 3,
+  "name": "Rewards Companion - development (read-only)",
+  "version": "0.2.0",
+  "description": "Read-only campaign discovery and legacy cache inspection. No merchant actions.",
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open Rewards Companion",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "host_permissions": [
+    "https://getmybonus.ca/*",
+    "https://prepaidrewards.ca/*",
+    "https://bonusrewards.ca/*",
+    "https://cardbonuses.com/*",
+    "https://cardreward.ca/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://getmybonus.ca/*",
+        "https://prepaidrewards.ca/*",
+        "https://bonusrewards.ca/*",
+        "https://cardbonuses.com/*",
+        "https://cardreward.ca/*"
+      ],
+      "js": [
+        "discovery/core.js",
+        "discovery/legacy.js",
+        "discovery/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "world": "ISOLATED"
+    }
+  ]
+}
