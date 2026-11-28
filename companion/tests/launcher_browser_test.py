@@ -33,7 +33,7 @@ with sync_playwright() as p:
     page=context.new_page()
     page.set_default_timeout(10000)
     page.set_default_navigation_timeout(10000)
-    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview explicit Open","change then cancel preserves preference","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular explicit Open","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices"])
+    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview both actions and explicit Open","neutral returning cancel preserves previous identity","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular both actions and neutral focus","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices"])
     scenario_count=0
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
     def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False,retain=False,stored=None,blocked=False):
@@ -70,7 +70,10 @@ with sync_playwright() as p:
     def check(n):assert page.evaluate("launches")==n
     def ready():
         button("Open Regular · v15").wait_for()
-        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Open Regular · v15'")
+        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.id==='loader-title'")
+        assert button("Open Regular · v15").is_enabled()
+        assert page.get_by_role("button",name="Open Preview",exact=False).count() or button("Preview unavailable").is_visible()
+        assert page.get_by_role("button",name="Change version").count()==0
     started=time.perf_counter()
     setup();ready()
     print(f"Synthetic navigation-to-ready: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
@@ -78,21 +81,25 @@ with sync_playwright() as p:
     assert not page.get_by_text("More testing options").is_visible()
     page.evaluate("() => { void window.run(); }");assert page.get_by_role("dialog").count()==1
     assert len(page.evaluate("calls"))==2
+    regular=button("Open Regular · v15");preview=button("Open Preview · 0.6.0 · 0123456789ab")
+    assert regular.evaluate("(e)=>getComputedStyle(e).backgroundColor")==preview.evaluate("(e)=>getComputedStyle(e).backgroundColor")
+    assert regular.bounding_box()["height"]==preview.bounding_box()["height"]
+    page.keyboard.press("Enter");check(0);assert len(page.evaluate("calls"))==2
     page.keyboard.press("Escape");gone();assert page.evaluate("document.activeElement.id")=="original";check(0)
-    setup();button("Open Preview · 0.6.0").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
-    setup(body="window.launches=99");button("Open Preview · 0.6.0").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
-    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("() => { void window.run(); }");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
+    setup();button("Open Preview · 0.6.0 · 0123456789ab").click();gone();page.wait_for_function("launches===1");assert len(page.evaluate("calls"))==3
+    setup(body="window.launches=99");button("Open Preview · 0.6.0 · 0123456789ab").click();page.get_by_text("Could not safely check",exact=False).wait_for();check(0);button("Cancel").click();gone()
+    setup(delay=True);button("Open Preview · 0.6.0 · 0123456789ab").click();page.evaluate("() => { void window.run(); }");button("Cancel").click();gone();page.wait_for_timeout(500);check(0);assert len(page.evaluate("calls"))==3
     setup(busy=True);page.wait_for_function("calls.length===1&&!window[Symbol.for('rewards.companion.launcher')]");assert page.evaluate("errors.length")==0;check(0)
-    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
-    setup(fail=True);button("Open Preview · 0.6.0").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
+    setup(delay=True);button("Open Preview · 0.6.0 · 0123456789ab").click();page.evaluate("document.body.insertAdjacentHTML('beforeend','<div id=bsp></div>')");gone();check(0)
+    setup(fail=True);button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for();check(0);page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     setup(manifest_fail=True);button("Retry").wait_for();page.evaluate("window.manifestFail=false");button("Retry").click();ready();button("Cancel").click();gone()
     setup(m={**manifest,"dev":{**manifest["dev"],"path":"https://other.invalid/x"}});button("Preview unavailable").wait_for();assert button("Preview unavailable").is_disabled();button("Cancel").click();gone()
-    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Could not find available versions. Nothing opened.").wait_for();assert button("Open Regular").is_disabled();button("Cancel").click();gone()
+    setup(m={**manifest,"stable":{**stable,"sha256":"0"*64}});page.get_by_text("Could not find available versions. Nothing opened.").wait_for();assert button("Regular unavailable").is_disabled() and button("Preview unavailable").is_disabled();button("Cancel").click();gone()
     setup();button("Open Regular · v15").click();page.get_by_text("Could not safely check",exact=False).wait_for();assert page.evaluate("calls[2]")==root+stable["path"];check(0);button("Cancel").click();gone()
-    setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
+    setup(body=stable_source,stable_positive=True);ready();page.keyboard.press("Enter");check(0);page.keyboard.press("Tab");assert button("Open Regular · v15").evaluate("(e)=>e.getRootNode().activeElement===e");page.keyboard.press("Enter");gone();page.wait_for_function("launches===1");assert page.evaluate("calls")==[root+base+"loader.js",root+base+"channels.json",root+stable["path"]];assert page.evaluate("errors.length")==0
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});page.get_by_text("More testing options").click();button("Test · 0.6.0").click();gone();page.wait_for_function("launches===1")
     setup(m={**manifest,"test":{**entry("test"),"mode":"write","purpose":"Not eligible"}});ready();assert not page.get_by_text("More testing options").is_visible();button("Cancel").click();gone()
-    setup(delay=True);button("Open Preview · 0.6.0").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
+    setup(delay=True);button("Open Preview · 0.6.0 · 0123456789ab").click();page.evaluate("document.activeElement.remove()");gone();page.wait_for_timeout(500);check(0)
     page.emulate_media(color_scheme="dark");setup();ready();assert page.get_by_role("dialog").evaluate("(e)=>getComputedStyle(e).backgroundColor")=="rgb(33, 35, 43)";page.keyboard.press("Escape");gone()
     # Targeted UX/lifecycle regressions, preserving the original scenarios.
     page.emulate_media(color_scheme="light")
@@ -111,7 +118,7 @@ with sync_playwright() as p:
     page.get_by_text("Help & version details",exact=True).click()
     button("Open Regular · v15").focus()
     assert page.get_by_role("status").inner_text()=="Choose a version."
-    page.keyboard.press("Tab");assert button("Open Preview · 0.6.0").evaluate("(e)=>e.getRootNode().activeElement===e")
+    page.keyboard.press("Tab");assert button("Open Preview · 0.6.0 · 0123456789ab").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Shift+Tab");assert button("Open Regular · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
     page.keyboard.press("Escape");gone();check(0)
     setup(m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}});ready()
@@ -121,7 +128,7 @@ with sync_playwright() as p:
     assert page.get_by_text(entry("test")["version"],exact=False).is_visible()
     assert page.get_by_text("More testing options").evaluate("(e)=>getComputedStyle(e).display")=="list-item"
     page.keyboard.press("Escape");gone()
-    setup(delay=True);button("Open Preview · 0.6.0").click()
+    setup(delay=True);button("Open Preview · 0.6.0 · 0123456789ab").click()
     assert page.get_by_role("status").inner_text()=="Opening Preview..."
     button("Cancel").click();gone()
     # A fresh bootstrap promise stays pending until the dialog closes. Do not
@@ -135,7 +142,7 @@ with sync_playwright() as p:
     started=time.perf_counter()
     page.keyboard.press("Escape");gone();page.wait_for_function("reinvokeSettled===true")
     print(f"Synthetic Escape-to-bootstrap-settled: {(time.perf_counter()-started)*1000:.1f} ms",flush=True)
-    setup(fail=True);button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    setup(fail=True);button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for()
     assert page.get_by_role("status").inner_text().startswith("Could not download Preview.")
     assert not page.get_by_text("Check failed: download (Preview).",exact=True).is_visible()
     page.get_by_text("Help & version details",exact=True).click()
@@ -145,7 +152,7 @@ with sync_playwright() as p:
     page.evaluate("window.fail=false");button("Retry").click();gone();page.wait_for_function("launches===1")
     focus_source="window.launches++;const b=document.createElement('button');b.id='launched-focus';document.body.append(b);b.focus();"
     focus_manifest={**manifest,"dev":{**manifest["dev"],"sha256":hashlib.sha256(focus_source.encode()).hexdigest()}}
-    setup(m=focus_manifest,body=focus_source);button("Open Preview · 0.6.0").click();gone()
+    setup(m=focus_manifest,body=focus_source);button("Open Preview · 0.6.0 · 0123456789ab").click();gone()
     assert page.evaluate("document.activeElement.id")=="launched-focus"
     for width in (320,360,400,480):
         page.set_viewport_size({"width":width,"height":480})
@@ -169,55 +176,56 @@ with sync_playwright() as p:
     def saved():return page.evaluate("(key)=>localStorage.getItem(key)",key)
     def pref():return json.loads(saved()) if saved() else None
     def preview_ready():
-        button("Open Preview · 0.6.0").wait_for()
-        page.wait_for_function("document.activeElement?.shadowRoot?.activeElement?.textContent==='Open Preview · 0.6.0'")
+        ready()
+        assert page.get_by_role("button",name="Open Preview",exact=False).is_enabled()
+        page.keyboard.press("Enter");check(0)
     setup();ready();assert saved() is None
-    button("Open Preview · 0.6.0").click();gone();check(1)
+    button("Open Preview · 0.6.0 · 0123456789ab").click();gone();check(1)
     assert pref()==json.loads(remembered_dev)
-    setup(retain=True);preview_ready();assert button("Open Regular · v15").count()==0
+    setup(retain=True);preview_ready();assert button("Open Regular · v15").is_visible()
     assert len(page.evaluate("calls"))==2;check(0)
-    button("Open Preview · 0.6.0").click();gone();check(1)
-    setup(retain=True);preview_ready();button("Change version").click();ready()
-    assert button("Open Preview · 0.6.0").is_visible()
+    button("Open Preview · 0.6.0 · 0123456789ab").click();gone();check(1)
+    setup(retain=True);preview_ready();ready()
+    assert button("Open Preview · 0.6.0 · 0123456789ab").is_visible()
     button("Cancel").click();gone();assert pref()==json.loads(remembered_dev);check(0)
     changed={**manifest,"dev":{**manifest["dev"],"version":"0.6.0-dev-abcdef012345","path":base+"releases/0.6.0-dev-abcdef012345.js"}}
     setup(m=changed,retain=True);preview_ready()
     assert "different Preview version" in page.get_by_role("status").inner_text()
     assert page.get_by_text(changed["dev"]["version"],exact=False).is_visible()
-    assert page.get_by_text("Previously selected: "+manifest["dev"]["version"],exact=False).is_visible()
-    assert pref()==json.loads(remembered_dev);check(0);button("Open Preview · 0.6.0").click();gone();check(1)
+    assert page.get_by_text("Previously verified on this site: Preview "+manifest["dev"]["version"],exact=False).is_visible()
+    assert pref()==json.loads(remembered_dev);check(0);button("Open Preview · 0.6.0 · abcdef012345").click();gone();check(1)
     assert pref()["version"]==changed["dev"]["version"]
     setup(m={"schema":1,"stable":stable},retain=True);ready()
-    assert "preferred version is unavailable" in page.get_by_role("status").inner_text()
+    assert "previously verified Preview is unavailable" in page.get_by_role("status").inner_text()
     assert button("Preview unavailable").is_disabled();check(0);button("Cancel").click();gone()
     assert pref()["version"]==changed["dev"]["version"]
     setup(stored='{"schema":1,"channel":"dev","version":"javascript:wrong","sha256":"bad"}');ready()
-    assert button("Open Preview · 0.6.0").is_visible();check(0);button("Cancel").click();gone()
+    assert button("Open Preview · 0.6.0 · 0123456789ab").is_visible();check(0);button("Cancel").click();gone()
     setup(blocked=True,stored=remembered_dev);ready()
-    button("Open Preview · 0.6.0").click();gone();check(1)
+    button("Open Preview · 0.6.0 · 0123456789ab").click();gone();check(1)
     setup(stored=remembered_dev,body="window.launches=99");preview_ready()
-    button("Open Preview · 0.6.0").click();button("Retry").wait_for();check(0)
-    assert button("Open Preview · 0.6.0").is_disabled() and button("Change version").is_disabled()
+    button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for();check(0)
+    assert button("Open Preview · 0.6.0 · 0123456789ab").is_disabled() and button("Open Regular · v15").is_disabled()
     assert pref()==json.loads(remembered_dev);button("Cancel").click();gone()
     setup(stored=remembered_dev,m={**manifest,"test":{**entry("test"),"mode":"read-only","purpose":"Synthetic diagnostics"}})
-    preview_ready();assert not page.get_by_text("More testing options").is_visible()
-    button("Change version").click();page.get_by_text("More testing options").click()
+    preview_ready();assert page.get_by_text("More testing options").is_visible()
+    page.get_by_text("More testing options").click()
     button("Test · 0.6.0").click();gone();check(1);assert pref()==json.loads(remembered_dev)
-    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for()
     page.evaluate("(value)=>{window.fixtureManifest=value;window.fail=false;}",changed)
     button("Retry").click();page.get_by_text("The selected version changed or is unavailable.",exact=False).wait_for()
-    assert button("Open Regular · v15").is_visible();check(0);assert pref()==json.loads(remembered_dev)
+    ready();assert button("Open Preview · 0.6.0 · abcdef012345").is_enabled();check(0);assert pref()==json.loads(remembered_dev)
     assert page.evaluate("calls.length")==4
     button("Cancel").click();gone()
     setup(body=stable_source,stable_positive=True);ready();button("Open Regular · v15").click();gone();check(1)
     assert pref()["channel"]=="stable" and pref()["sha256"]==stable["sha256"]
-    setup(retain=True);ready();assert button("Open Preview · 0.6.0").count()==0;check(0)
+    setup(retain=True);ready();assert button("Open Preview · 0.6.0 · 0123456789ab").is_visible();check(0)
     button("Cancel").click();gone();assert pref()["channel"]=="stable"
-    setup(stored=remembered_dev,delay=True);preview_ready();button("Change version").click();ready()
+    setup(stored=remembered_dev,delay=True);preview_ready();ready()
     button("Open Regular · v15").click();button("Cancel").click();gone();page.wait_for_timeout(500);check(0)
     assert pref()==json.loads(remembered_dev)
     setup(stored="x"*257);ready();check(0);button("Cancel").click();gone()
-    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for()
     page.evaluate("window.fail=false");button("Retry").click();gone();check(1)
     assert page.evaluate("calls").count(root+base+"channels.json")==2
     setup(retain=True);preview_ready();button("Cancel").click();gone()
@@ -228,13 +236,13 @@ with sync_playwright() as p:
     setup(stored=remembered_dev,m=hash_changed,body=replacement);preview_ready()
     assert page.get_by_text("Source fingerprint changed.",exact=False).is_visible();check(0)
     assert pref()==json.loads(remembered_dev)
-    button("Open Preview · 0.6.0").click();gone();check(1)
+    button("Open Preview · 0.6.0 · 0123456789ab").click();gone();check(1)
     assert pref()["sha256"]==hash_changed["dev"]["sha256"]
-    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0").click();button("Retry").wait_for()
+    setup(stored=remembered_dev,fail=True);preview_ready();button("Open Preview · 0.6.0 · 0123456789ab").click();button("Retry").wait_for()
     page.evaluate("window.manifestFail=true;window.fail=false")
     button("Retry").click();page.get_by_text("Could not find available versions. Nothing opened.",exact=True).wait_for()
-    assert button("Open Preview · 0.6.0").is_disabled()
-    assert button("Open Regular · v15").is_disabled();check(0)
+    assert button("Preview unavailable").is_disabled()
+    assert button("Regular unavailable").is_disabled();check(0)
     assert pref()==json.loads(remembered_dev)
     page.evaluate("window.manifestFail=false")
     button("Retry").click();gone();check(1)
@@ -290,67 +298,80 @@ with sync_playwright() as p:
     available=True
     distribution.get_by_role("button",name="Try again").click()
     download.wait_for();assert download.get_attribute("href")==root+published["dev"]["package"]
-    print("D3 comparison: exact, same-semver, different channel, unavailable, privacy and provenance",flush=True)
+    print("Neutral D3 comparison: explicit distribution/channel, exact identity, no persistence and provenance",flush=True)
+    old_preferences='{"extension":"dev","bookmarklet":"stable"}'
+    distribution.evaluate("(value)=>localStorage.setItem('rewards.companion.distribution.preferences.v1',value)",old_preferences)
+    open_distribution()
     distribution.get_by_text("Check your version",exact=True).click()
-    distribution.get_by_label("Version you are using").select_option("dev")
-    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    dist=distribution.get_by_label("How do you open Rewards Companion?")
+    running=distribution.get_by_label("Version you are using")
+    target=distribution.get_by_label("Compare with")
+    compare=distribution.get_by_role("button",name="Compare versions")
+    result=distribution.locator("#comparison-result")
+    assert dist.input_value()=="" and target.input_value()=="" and target.is_disabled() and compare.is_disabled()
+    dist.select_option("extension")
+    assert target.input_value()=="" and compare.is_disabled()
+    assert target.locator('option[value="stable"]').is_disabled()
+    assert "Regular is not available" in distribution.locator("#comparison-note").inner_text()
+    running.select_option("dev")
+    assert target.input_value()=="" and compare.is_disabled()
     distribution.get_by_label("Version number").fill(published["dev"]["version"].split("-dev-")[0])
     distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"])
+    target.select_option("dev")
     request_count=len(requests)
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
+    compare.click()
+    assert result.inner_text()=="Your exact Preview build matches the published Preview."
     distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"][:12]+("a" if good_evidence["commit"][12:]!="a"*28 else "b")*28)
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert "does not establish which build is newer" in distribution.locator("#comparison-result").inner_text()
+    assert "Exact comparison unavailable" in result.inner_text()
+    compare.click();assert "does not establish which build is newer" in result.inner_text()
     distribution.get_by_label("Full source ID from version details").fill("bad")
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert "Exact comparison unavailable" in distribution.locator("#comparison-result").inner_text()
-    distribution.get_by_label("Compare with").select_option("stable")
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert "Regular is not available" in distribution.locator("#comparison-result").inner_text()
-    distribution.get_by_label("How do you open Rewards Companion?").select_option("bookmarklet")
-    assert distribution.get_by_label("Compare with").input_value()=="dev"
-    distribution.get_by_label("Version you are using").select_option("stable")
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert "matches the published Regular" in distribution.locator("#comparison-result").inner_text()
-    distribution.get_by_label("Compare with").select_option("dev")
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert "different release" in distribution.locator("#comparison-result").inner_text()
+    compare.click();assert "Exact comparison unavailable" in result.inner_text()
+    dist.select_option("bookmarklet")
+    assert target.input_value()=="" and running.input_value()=="unknown" and compare.is_disabled()
+    running.select_option("dev")
+    assert distribution.get_by_label("Full source ID from version details").input_value()==""
+    target.select_option("dev")
+    running.select_option("stable")
+    assert target.input_value()=="" and compare.is_disabled()
+    target.select_option("stable");compare.click()
+    assert "matches the published Regular" in result.inner_text()
+    target.select_option("dev");compare.click()
+    assert "different release" in result.inner_text()
     assert len(requests)==request_count
-    preferences=distribution.evaluate("JSON.parse(localStorage.getItem('rewards.companion.distribution.preferences.v1'))")
-    assert preferences=={"extension":"stable","bookmarklet":"dev"}
+    assert distribution.evaluate("localStorage.getItem('rewards.companion.distribution.preferences.v1')")==old_preferences
     assert distribution.evaluate("localStorage.length")==1
     open_distribution();distribution.get_by_text("Check your version",exact=True).click()
-    assert distribution.get_by_label("Compare with").input_value()=="stable"
-    distribution.get_by_label("How do you open Rewards Companion?").select_option("bookmarklet")
-    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    assert dist.input_value()=="" and target.input_value()=="" and compare.is_disabled()
     for invalid in ({**good_evidence,"commit":"a"*40},{**good_evidence,"run":True},
                     {**good_evidence,"candidate":{**good_evidence["candidate"],"packageSha256":"0"*64}},
                     {**good_evidence,"previousDev":{**good_evidence["previousDev"],"path":"https://other.invalid/x"}}):
         evidence=invalid;open_distribution();assert not download.is_visible()
         assert distribution.get_by_role("button",name="Try again").is_visible()
         distribution.get_by_text("Check your version",exact=True).click()
-        distribution.get_by_label("Version you are using").select_option("dev")
-        distribution.get_by_label("Compare with").select_option("dev")
-        distribution.get_by_role("button",name="Compare versions").click()
-        assert "could not be checked" in distribution.locator("#comparison-result").inner_text()
+        dist.select_option("extension");running.select_option("dev")
+        assert target.locator('option[value="dev"]').is_disabled() and compare.is_disabled()
+        assert "Preview could not be checked" in distribution.locator("#comparison-note").inner_text()
     evidence=good_evidence;evidence_available=False
     open_distribution();assert not download.is_visible()
+    distribution.get_by_text("Check your version",exact=True).click()
+    dist.select_option("bookmarklet");running.select_option("stable");target.select_option("stable");compare.click()
     evidence_available=True;distribution.get_by_role("button",name="Try again").click();download.wait_for()
+    assert target.input_value()=="" and compare.is_disabled()
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
-    # Blocked page storage is optional; session comparison still works.
-    distribution.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}})")
+    # No storage reads, writes or removal, even when legacy preferences exist.
+    distribution.add_init_script("""window.storageAccesses=0;
+      for(const method of ['getItem','setItem','removeItem','clear'])Storage.prototype[method]=function(){window.storageAccesses++;throw Error('blocked');};""")
     open_distribution();download.wait_for()
     distribution.get_by_text("Check your version",exact=True).click()
-    distribution.get_by_label("Version you are using").select_option("dev")
-    assert distribution.get_by_label("Compare with").input_value()=="dev"
-    distribution.get_by_label("Compare with").select_option("stable")
-    distribution.get_by_label("Compare with").select_option("dev")
+    assert dist.input_value()=="" and target.input_value()=="" and compare.is_disabled()
+    dist.select_option("extension");running.select_option("dev")
+    assert target.input_value()=="" and compare.is_disabled()
     distribution.get_by_label("Version number").fill(published["dev"]["version"].split("-dev-")[0])
     distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"])
-    distribution.get_by_role("button",name="Compare versions").click()
-    assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
-    print("D3 exact build comparison and provenance scenarios PASS",flush=True)
+    target.select_option("dev");compare.click()
+    assert result.inner_text()=="Your exact Preview build matches the published Preview."
+    assert distribution.evaluate("storageAccesses")==0
+    print("Neutral selection and exact build comparison/provenance scenarios PASS",flush=True)
     distribution.emulate_media(color_scheme="dark",forced_colors="active")
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
     distribution.close()
