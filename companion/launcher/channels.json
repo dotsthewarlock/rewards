@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "stable": {
-    "version": "15",
-    "path": "redeem/Redeem_Prepaid_Rewards_v15.js",
-    "sha256": "23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"
+    "version": "15.1",
+    "path": "companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js",
+    "sha256": "a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"
   },
   "dev": {
     "version": "0.6.0-dev-1713e98e643e",
