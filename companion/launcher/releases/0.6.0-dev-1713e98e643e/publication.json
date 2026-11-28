@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "commit": "1713e98e643e7fcdb7e9856e3b1a2f1791e9566b",
+  "run": 46099477535,
+  "artifact": 15245315581,
+  "checkpoint": "Testing only: accepted queue removal/recovery and diagnostic provenance, recording and capture improvements; 84/84 and both packaged distributions passed. Affected wizard final review refuses hidden barcode; narrow bookmarklet pointer coexistence, native update/rollback and E4 remain open. No update/switch with unresolved attempt.",
+  "candidate": {
+    "version": "0.6.0-dev-1713e98e643e",
+    "path": "companion/launcher/releases/0.6.0-dev-1713e98e643e/rewards-companion-0.6.0-dev-1713e98e643e-bookmarklet.js",
+    "sha256": "508ab0d596ea18bd9934bcba25cb3d44fd5820e2d715a79734fb34a5395e688e",
+    "package": "companion/launcher/releases/0.6.0-dev-1713e98e643e/rewards-companion-0.6.0-dev-1713e98e643e-development.zip",
+    "packageSha256": "8626b400aa71a66ad5a4c80571c26945b20265caa40d157c621866c836aa18d8"
+  },
+  "previousDev": {
+    "version": "0.6.0-dev-7c03bfac2b2f",
+    "path": "companion/launcher/releases/0.6.0-dev-7c03bfac2b2f/rewards-companion-0.6.0-dev-7c03bfac2b2f-bookmarklet.js",
+    "sha256": "c34a51432a8e025b1ad2dece3f4b74f79452e8cdd908101a1f6f6b862818b687",
+    "package": "companion/launcher/releases/0.6.0-dev-7c03bfac2b2f/rewards-companion-0.6.0-dev-7c03bfac2b2f-development.zip",
+    "packageSha256": "aff793ca4856e81b005d87002fc887bb829e68d5fa1329d3280e4644a832b1f5"
+  }
+}
