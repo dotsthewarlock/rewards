@@ -62,7 +62,8 @@ document.querySelector('#next').addEventListener('click',()=>{finalStep.prepend(
 HIDDEN_BARCODE_FIXTURE = WORKFLOW_FIXTURE.replace("finalStep.prepend(codes);","")
 
 def enter_hidden_barcode(page):
-    page.locator("#start").click()
+    # Keyboard interaction is usable even at the narrow bookmarklet viewport.
+    page.locator("#start").press("Enter")
     code=page.locator(".wizard-serial-number")
     code.fill(CODE)
     page.evaluate("window.fixtureBarcode=document.querySelector('.wizard-serial-number')")
@@ -72,10 +73,11 @@ def inactive_barcode(page):
     page.locator("#barcode-step").evaluate("el=>el.classList.remove('step_active')")
 
 def hidden_final(page):
-    page.locator("#next").click()
+    page.locator("#next").press("Enter")
     page.locator("#workflow_data_email").fill("fixture@example.invalid")
     page.locator("#workflow_data_email_confirmation").fill("fixture@example.invalid")
-    page.locator("#workflow_data_terms_of_service").check()
+    page.locator("#workflow_data_terms_of_service").press("Space")
+    assert page.locator("#workflow_data_terms_of_service").is_checked()
     assert page.evaluate("window.fixtureBarcode===document.querySelector('.wizard-serial-number')")
     assert page.evaluate("window.submits===0 && JSON.stringify(Object.entries(localStorage).sort())===window.before")
 

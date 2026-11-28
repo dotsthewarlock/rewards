@@ -80,7 +80,7 @@ with sync_playwright() as p:
     assert '"TEST_SECRET_CARD","0000"' in Path(dl.value.path()).read_text(encoding="utf-8-sig")
     host.get_by_role("button",name="Settings",exact=True).click()
     expect(host).to_contain_text("Current document only")
-    expect(host.get_by_label("Record sanitized structural observations")).to_have_count(0)
+    expect(host.get_by_label("Record page changes")).to_have_count(0)
     with page.expect_download() as dl:
         host.get_by_role("button",name="Export diagnostics").click()
     packet=json.loads(Path(dl.value.path()).read_text())

@@ -171,16 +171,37 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             for secret in ("SYNTHETIC_SECRET","PRIVATE_TEST_TOKEN","SECRET@example.invalid","TEST_SECRET_CARD","QUERY_SECRET","000000000000000000000000000001"):
                 assert secret not in json.dumps(packet)
             # Real settings toggle feedback and persisted preference on panel reload.
-            toggle=panel.get_by_label("Record sanitized structural observations")
+            toggle=panel.get_by_label("Record page changes")
             toggle.uncheck()
             expect(panel.locator("#announcement")).to_contain_text("Recording off — preference saved and verified")
             panel.reload()
             panel.get_by_role("button",name="Settings",exact=True).click()
-            expect(panel.get_by_label("Record sanitized structural observations")).not_to_be_checked()
-            panel.get_by_label("Record sanitized structural observations").check()
+            expect(panel.get_by_label("Record page changes")).not_to_be_checked()
+            worker.evaluate("""()=>{const s=chrome.storage.local,old=s.set;
+              globalThis.restoreDiagnosticSet=()=>{s.set=old;delete globalThis.restoreDiagnosticSet};
+              s.set=async value=>{if(Object.hasOwn(value,'diagnosticsEnabled'))return;return old.call(s,value)};}""")
+            try:
+                panel.get_by_label("Record page changes").click()
+                expect(panel.locator("#announcement")).to_contain_text("Recording preference could not be verified in storage")
+                expect(panel.get_by_label("Record page changes")).not_to_be_checked()
+            finally:
+                worker.evaluate("restoreDiagnosticSet()")
+            panel.get_by_label("Record page changes").check()
             expect(panel.locator("#announcement")).to_contain_text("Recording on — preference saved and verified")
             page.bring_to_front()
             assert worker.evaluate("async()=> (await diagnostics()).enabled") is True
+            # Read failure is distinct from off, empty evidence or a successful capture.
+            worker.evaluate("""()=>{const s=chrome.storage.local,old=s.get;
+              globalThis.restoreDiagnosticGet=()=>{s.get=old;delete globalThis.restoreDiagnosticGet};
+              s.get=async keys=>{if(keys&&Object.hasOwn(keys,'structuralRecords'))throw Error('synthetic read failure');return old.call(s,keys)};}""")
+            try:
+                failed=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
+                assert failed["diagnostics"]["enabled"] is None and failed["diagnostics"]["count"] is None
+                assert failed["diagnostics"]["issue"]=="diagnostics-storage-unavailable"
+                assert panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",connected["target"])=={"ok":False,"reason":"diagnostics-storage-unavailable"}
+                assert panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'exportDiagnostics'})")=={"ok":False,"reason":"diagnostics-storage-unavailable"}
+            finally:
+                worker.evaluate("restoreDiagnosticGet()")
             assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
             print("Packaged MV3 diagnostic export identity, old records, time/coverage semantics, persisted preference, storage fault/readback and UI feedback PASS",flush=True)
             # Exercise the actual index sender and trusted manual click against a
@@ -637,4 +658,20 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert again.evaluate("window.clicks===0")
         assert worker.evaluate("async()=>await diagnostics()")==persisted
         print("Nested root replacement, same-document restoration, two-tab ownership, reload and browser restart persistence PASS",flush=True)
+        # Verify the ON preference across a full browser restart as well as OFF.
+        # No recognized merchant tab is open while enabling; no initial capture.
+        again.close()
+        prefs_panel=ctx.new_page()
+        prefs_panel.goto(f"chrome-extension://{worker.url.split('/')[2]}/index.html")
+        assert prefs_panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'setDiagnostics',enabled:true})")=={"ok":True,"enabled":True,"capture":None}
+        on_state=worker.evaluate("async()=>await diagnostics()")
+        assert on_state==dict(persisted,enabled=True)
+        for p0 in ctx.pages:
+            p0.goto("about:blank")
+            p0.close()
+        ctx.close()
+        ctx=p.chromium.launch_persistent_context(profile,channel="chromium",headless=True,args=[f"--disable-extensions-except={root}",f"--load-extension={root}"])
+        worker=ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker",timeout=15000)
+        assert worker.evaluate("async()=>await diagnostics()")==on_state
+        print("Both recording preference states survive full profile restart; earlier observations retained PASS",flush=True)
     finally:ctx.close()
