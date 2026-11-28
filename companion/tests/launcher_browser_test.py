@@ -345,6 +345,8 @@ with sync_playwright() as p:
     available=True
     distribution.get_by_role("button",name="Try again").click()
     download.wait_for();assert download.get_attribute("href")==root+published["dev"]["package"]
+    # Keep historical comparison fixtures explicit after eventual maintenance activation.
+    selection={**published,"stable":stable}
     print("Neutral D3 comparison: explicit distribution/channel, exact identity, no persistence and provenance",flush=True)
     old_preferences='{"extension":"dev","bookmarklet":"stable"}'
     distribution.evaluate("(value)=>localStorage.setItem('rewards.companion.distribution.preferences.v1',value)",old_preferences)

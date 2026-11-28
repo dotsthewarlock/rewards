@@ -193,4 +193,13 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual((repo/candidate["path"]).read_bytes(),source)
                 target.write_bytes(m.json_bytes({**current,"stable":{**stable,"sha256":"f"*64}}))
                 with self.assertRaises(ValueError):m.manifest(repo)
+                # Existing Dev activation must preserve a separately activated exact maintenance pin.
+                staged=repo/m.MAINTENANCE["path"];staged.parent.mkdir(parents=True,exist_ok=True)
+                staged.write_bytes((Path(__file__).resolve().parents[2]/m.MAINTENANCE["path"]).read_bytes())
+                maintenance_current={**current,"stable":m.MAINTENANCE}
+                target.write_bytes(m.json_bytes(maintenance_current))
+                with patch.object(m,"hosted") as hosted:
+                    m.activate(activate)
+                    hosted.assert_any_call(m.MAINTENANCE["path"],m.MAINTENANCE["sha256"])
+                self.assertEqual(m.load(target.read_bytes()),{**maintenance_current,"dev":candidate})
 if __name__=="__main__":unittest.main()
