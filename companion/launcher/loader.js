@@ -51,9 +51,9 @@
   const done=new Promise(resolve=>{complete=resolve;});
   const valid=c=>c && typeof c.path==='string' && typeof c.sha256==='string' && /^[a-f0-9]{64}$/.test(c.sha256);
   const candidate=(c,grade)=>valid(c)&&typeof c.version==='string'&&new RegExp('^\\d+\\.\\d+\\.\\d+-'+grade+'-[a-f0-9]{12}$').test(c.version)&&(c.path===BASE+'releases/'+c.version+'.js'||c.path===BASE+'releases/'+c.version+'/rewards-companion-'+c.version+'-bookmarklet.js');
-  const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"});
+  const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"}),CORRECTION=Object.freeze({"version":"15.2","path":"companion/launcher/releases/15.2/Redeem_Prepaid_Rewards_v15.2.js","sha256":"e50fe1b7e1a7d41f6954af47c5126fdb2b5900c23546af4999586e5975a396c4"});
   const pinned=(c,p)=>valid(c)&&Object.keys(c).length===3&&c.version===p.version&&c.path===p.path&&c.sha256===p.sha256;
-  const maintenanceOK=c=>pinned(c,MAINTENANCE);
+  const maintenanceOK=c=>pinned(c,MAINTENANCE)||pinned(c,CORRECTION);
   const stableOK=c=>pinned(c,ORIGINAL)||maintenanceOK(c);
   // Legacy is an explicit alternative only while the exact maintenance pin is active.
   const entryFor=(value,grade)=>grade==='legacy'?(maintenanceOK(value?.stable)?ORIGINAL:null):value?.[grade];
@@ -68,7 +68,7 @@
     if(raw&&raw.length<=256){
       const p=JSON.parse(raw);
       if(p?.schema===1&&Object.keys(p).length===4&&typeof p.sha256==='string'&&/^[a-f0-9]{64}$/.test(p.sha256)&&
-         ((p.channel==='stable'&&['15','15.1'].includes(p.version))||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))previousVerified=p;
+         ((p.channel==='stable'&&['15','15.1','15.2'].includes(p.version))||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))previousVerified=p;
     }
   }catch{}
   const recordVerification=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade==='legacy'?'stable':grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
@@ -90,7 +90,7 @@
   const display=value=>{
     manifest=value;
     stable.textContent='Open Regular · v'+value.stable.version;
-    description.textContent=(maintenanceOK(value.stable)?'Within Regular, v15.1 is recommended; the original v15 remains available. ':'Regular v15 is the original production version. ')+'Regular may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.';
+    description.textContent=(maintenanceOK(value.stable)?'Within Regular, v'+value.stable.version+' is recommended; the original v15 remains available. ':'Regular v15 is the original production version. ')+'Regular may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.';
     dev.textContent=candidate(value.dev,'dev')?'Open Preview · '+value.dev.version.replace('-dev-',' · '):'Preview unavailable';
     meta.textContent=candidate(value.dev,'dev')?'For testing only. Do not use for real claims.':'Preview is unavailable. Regular is still available.';
     versions.textContent=['Regular (Stable): v'+value.stable.version,maintenanceOK(value.stable)?'Original v15 legacy fallback':null,candidate(value.dev,'dev')?'Preview (Dev): '+value.dev.version:'Preview: unavailable',testOK(value.test)?'Test: '+value.test.version:null].filter(Boolean).join(' · ');

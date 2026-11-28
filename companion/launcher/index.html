@@ -54,7 +54,7 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 <label for="distribution">How do you open Rewards Companion?</label>
 <select id="distribution" autocomplete="off"><option value="">Choose how you open it</option><option value="extension">Chrome extension</option><option value="bookmarklet">Browser bookmark</option></select>
 <label for="running">Version you are using</label>
-<select id="running" disabled autocomplete="off"><option value="unknown">Not sure</option><option value="stable">Regular v15 (original bookmark)</option><option value="maintenance">Regular v15.1 (if already using)</option><option value="dev">Preview</option></select>
+<select id="running" disabled autocomplete="off"><option value="unknown">Not sure</option><option value="stable">Regular v15 (original bookmark)</option><option value="maintenance">Regular v15.1 (if already using)</option><option value="correction">Regular v15.2 (if already using)</option><option value="dev">Preview</option></select>
 <div id="running-details" hidden>
 <label for="running-version">Version number</label><input id="running-version" type="text" maxlength="32" placeholder="0.6.0" autocomplete="off" spellcheck="false">
 <label for="running-commit">Full source ID from version details</label><input id="running-commit" type="text" maxlength="40" autocomplete="off" spellcheck="false">
@@ -77,9 +77,10 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 const $=id=>document.getElementById(id);
 const root=new URL('../../',location.href),base='companion/launcher/';
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
-const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"});
+const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"}),CORRECTION=Object.freeze({"version":"15.2","path":"companion/launcher/releases/15.2/Redeem_Prepaid_Rewards_v15.2.js","sha256":"e50fe1b7e1a7d41f6954af47c5126fdb2b5900c23546af4999586e5975a396c4"});
 const pinned=(c,p)=>c&&Object.keys(c).length===3&&c.version===p.version&&c.path===p.path&&c.sha256===p.sha256;
-const stable=c=>pinned(c,ORIGINAL)||pinned(c,MAINTENANCE);
+const stable=c=>pinned(c,ORIGINAL)||pinned(c,MAINTENANCE)||pinned(c,CORRECTION);
+const maintained=version=>version==='15.1'||version==='15.2';
 const preview=c=>{
   if(typeof c?.version!=='string'||!/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(c.version)||!sha(c.sha256))return false;
   const folder=base+'releases/'+c.version+'/';
@@ -116,11 +117,12 @@ function updateControls(){
   running.disabled=!chosen;
   running.querySelector('[value="stable"]').disabled=distribution!=='bookmarklet';
   running.querySelector('[value="maintenance"]').disabled=distribution!=='bookmarklet';
+  running.querySelector('[value="correction"]').disabled=distribution!=='bookmarklet';
   target.disabled=!chosen||loading;
   const regularOption=target.querySelector('[value="stable"]'),legacyOption=target.querySelector('[value="legacy"]');
   regularOption.disabled=distribution!=='bookmarklet'||!regularAvailable;
-  regularOption.textContent=regularVersion==='15.1'?'Regular v15.1 (recommended within Regular)':regularVersion==='15'?'Regular v15':'Regular';
-  legacyOption.hidden=regularVersion!=='15.1';legacyOption.disabled=legacyOption.hidden||distribution!=='bookmarklet'||!regularAvailable;
+  regularOption.textContent=maintained(regularVersion)?'Regular v'+regularVersion+' (recommended within Regular)':regularVersion==='15'?'Regular v15':'Regular';
+  legacyOption.hidden=!maintained(regularVersion);legacyOption.disabled=legacyOption.hidden||distribution!=='bookmarklet'||!regularAvailable;
   target.querySelector('[value="dev"]').disabled=!verified;
   if(target.value&&target.selectedOptions[0].disabled)target.value='';
   $('running-details').hidden=running.value!=='dev'||!chosen;
@@ -141,8 +143,8 @@ $('compare').addEventListener('click',()=>{
   const running=$('running').value,distribution=$('distribution').value,preferred=$('preferred').value;
   let result=unknown;
   if(!['extension','bookmarklet'].includes(distribution)||!['stable','legacy','dev'].includes(preferred)||loading||$('compare').disabled){resetComparison();return;}
-  const regularTarget=preferred==='stable'?regularVersion:preferred==='legacy'&&regularVersion==='15.1'?'15':null;
-  const runningRegular=distribution==='bookmarklet'?(running==='stable'?'15':running==='maintenance'?'15.1':null):null;
+  const regularTarget=preferred==='stable'?regularVersion:preferred==='legacy'&&maintained(regularVersion)?'15':null;
+  const runningRegular=distribution==='bookmarklet'?(running==='stable'?'15':running==='maintenance'?'15.1':running==='correction'?'15.2':null):null;
   const switching=' Switching is your choice; do not switch during an unfinished claim.';
   if(preferred!=='dev'&&distribution!=='bookmarklet')result='Regular is not available for the Chrome extension. Choose Preview explicitly to compare.';
   else if(preferred!=='dev'&&(!regularAvailable||!regularTarget)||preferred==='dev'&&!verified)result='The selected version could not be checked. Your current version has not changed.';
@@ -167,7 +169,7 @@ async function refresh(){
   try{
     const data=await getJSON('channels.json');
     if(data?.schema!==1||!stable(data.stable))throw Error('Invalid release details');
-    regularAvailable=true;regularVersion=data.stable.version;$('regular').textContent='Regular (Stable) · version '+regularVersion+(regularVersion==='15.1'?' — recommended within Regular; original v15 remains available as a legacy fallback.':'');
+    regularAvailable=true;regularVersion=data.stable.version;$('regular').textContent='Regular (Stable) · version '+regularVersion+(maintained(regularVersion)?' — recommended within Regular; original v15 remains available as a legacy fallback.':'');
     if(preview(data.dev)){
       const c=data.dev;
       if(packageOK(c)){

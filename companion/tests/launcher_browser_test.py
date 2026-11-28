@@ -23,10 +23,15 @@ maintenance_bytes=(project.parent/maintenance["path"]).read_bytes()
 assert hashlib.sha256(maintenance_bytes).hexdigest()==maintenance["sha256"]
 assert hashlib.sha1(b"blob "+str(len(maintenance_bytes)).encode()+b"\0"+maintenance_bytes).hexdigest()=="6a317f92e182df7e9fbd183ef13bb0cc04362294"
 maintenance_source=maintenance_bytes.decode("utf-8")
+correction={"version":"15.2","path":"companion/launcher/releases/15.2/Redeem_Prepaid_Rewards_v15.2.js","sha256":"e50fe1b7e1a7d41f6954af47c5126fdb2b5900c23546af4999586e5975a396c4"}
+correction_bytes=(project.parent/correction["path"]).read_bytes()
+assert hashlib.sha256(correction_bytes).hexdigest()==correction["sha256"]
+assert hashlib.sha1(b"blob "+str(len(correction_bytes)).encode()+b"\0"+correction_bytes).hexdigest()=="31ec102fa43b427ba332338671b7a17de12c83ed"
+correction_source=correction_bytes.decode("utf-8")
 manifest=dict(schema=1,stable=stable,dev=entry("dev"))
 # Verify production pins locally; do not execute either real reward script.
 published=json.loads((project/"launcher/channels.json").read_text())
-assert published["stable"] in (stable,maintenance)
+assert published["stable"] in (stable,maintenance,correction)
 for key in ("stable","dev"):
     c=published[key]
     assert hashlib.sha256((project.parent/c["path"]).read_bytes()).hexdigest()==c["sha256"]
@@ -38,7 +43,7 @@ with sync_playwright() as p:
     page=context.new_page()
     page.set_default_timeout(10000)
     page.set_default_navigation_timeout(10000)
-    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview both actions and explicit Open","neutral returning cancel preserves previous identity","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular both actions and neutral focus","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices","maintenance staged not selectable","activated neutral maintenance and fallback","maintenance previous verification","maintenance exact-byte fallback","maintenance corrupt pin","maintenance wrong bytes","maintenance missing source","maintenance cancelled","maintenance retry pointer rollback","legacy retry pointer rollback"])
+    scenarios=iter(["discovery, duplicate invocation and Escape","preview launch","hash mismatch","cancel delayed download","active workspace guard","workspace appears during download","download retry","manifest retry","invalid preview URL","invalid stable pin","stable mismatch","stable exact-byte interception","read-only test","ineligible test","host removal","dark appearance","help, privacy and keyboard","test disclosure","cancel and fresh reinvocation","diagnostic retry","launched focus","responsive layout 320","responsive layout 360","responsive layout 400","responsive layout 480","forced colors","remember Preview after verified launch","returning Preview both actions and explicit Open","neutral returning cancel preserves previous identity","same-semver changed build","unavailable preference","malformed preference","blocked storage","failed verification preserves preference","Test preference isolation","retry changed pointer","remember Regular after verified launch","returning Regular both actions and neutral focus","cancel delayed selection preserves preference","oversized preference","retry unchanged pointer","cross-origin preference isolation","same release ID different source hash","failed retry invalidates stale choices","maintenance staged not selectable","activated neutral maintenance and fallback","maintenance previous verification","maintenance exact-byte fallback","maintenance corrupt pin","maintenance wrong bytes","maintenance missing source","maintenance cancelled","maintenance retry pointer rollback","legacy retry pointer rollback","v15.2 staged inactive with prior pin","v15.2 exact neutral open","v15.2 previous verification after rollback","v15.2 original fallback","v15.2 wrong pin","v15.2 wrong bytes","v15.2 missing source","v15.2 cancel","v15.2 retry rollback to v15.1","v15.2 legacy retry rollback to v15"])
     scenario_count=0
     page.route("**/*",lambda r:r.fulfill(status=200,content_type="text/html",body='<button id="original">Original</button>') if r.request.url=="https://fixture.invalid/" else r.abort())
     def setup(m=manifest,body=source,delay=False,busy=False,fail=False,manifest_fail=False,stable_positive=False,retain=False,stored=None,blocked=False):
@@ -46,7 +51,7 @@ with sync_playwright() as p:
         scenario_count+=1
         print(f"START {scenario_count}: {next(scenarios)}",flush=True)
         page.goto("https://fixture.invalid/")
-        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource,maintenanceSource,retain,stored,blocked])=>{
+        page.evaluate("""([loader,bootstrap,m,body,delay,busy,fail,manifestFail,root,base,stablePositive,stableSource,maintenanceSource,correctionSource,retain,stored,blocked])=>{
           const key='rewards.companion.launcher.preference.v1';
           if(!retain)localStorage.removeItem(key);
           if(stored!==null)localStorage.setItem(key,stored);
@@ -56,7 +61,7 @@ with sync_playwright() as p:
           window.alert=s=>errors.push(s);
           // Positive Stable test checks real bytes and the exact final invocation;
           // intercept only those bytes at eval, never run v15 or a merchant workflow.
-          {const nativeEval=window.eval;window.eval=s=>{if(s===stableSource||s===maintenanceSource){window.launches++;return;}return (0,nativeEval)(s);};}
+          {const nativeEval=window.eval;window.eval=s=>{if(s===stableSource||s===maintenanceSource||s===correctionSource){window.launches++;return;}return (0,nativeEval)(s);};}
           if(busy)document.body.insertAdjacentHTML('beforeend','<div id="bsp"></div>');
           window.fetch=async(url,o)=>{calls.push(url);
             if(o.cache!=='no-store'||o.credentials!=='omit'||o.redirect!=='error'||o.referrerPolicy!=='no-referrer')throw Error('unsafe fetch');
@@ -67,7 +72,7 @@ with sync_playwright() as p:
           };
           document.querySelector('#original').focus();
           window.run=()=> (0,eval)(bootstrap);window.run();
-        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base,stable_positive,stable_source,maintenance_source,retain,stored,blocked])
+        }""",[loader,bootstrap,m,body,delay,busy,fail,manifest_fail,root,base,stable_positive,stable_source,maintenance_source,correction_source,retain,stored,blocked])
     def button(name):return page.get_by_role("button",name=name,exact=True)
     def gone():
         page.get_by_role("dialog").wait_for(state="detached")
@@ -294,7 +299,44 @@ with sync_playwright() as p:
     page.evaluate("(m)=>{window.fixtureManifest=m;window.fail=false;}",manifest)
     button("Retry").click();ready();assert not fallback.is_visible();check(0);assert len(page.evaluate("calls"))==4
     button("Cancel").click();gone()
-    assert scenario_count==54 and next(scenarios,None) is None
+    prior_active={**manifest,"stable":maintenance}
+    corrected={**manifest,"stable":correction}
+    setup(m=prior_active);ready("15.1")
+    assert button("Open Regular · v15.2").count()==0 and fallback.is_visible()
+    button("Cancel").click();gone();check(0)
+    setup(m=corrected,body=correction_source);ready("15.2")
+    regular2=button("Open Regular · v15.2")
+    assert regular2.bounding_box()["height"]==preview.bounding_box()["height"] and fallback.is_visible()
+    assert regular2.evaluate("(e)=>getComputedStyle(e).backgroundColor")==preview.evaluate("(e)=>getComputedStyle(e).backgroundColor")
+    assert page.get_by_text("Within Regular, v15.2 is recommended",exact=False).is_visible()
+    page.keyboard.press("Enter");check(0);assert len(page.evaluate("calls"))==2
+    regular2.click();gone();check(1);assert page.evaluate("calls[2]")==root+correction["path"]
+    assert pref()==dict(schema=1,channel="stable",version="15.2",sha256=correction["sha256"])
+    setup(m=prior_active,body=maintenance_source,retain=True);ready("15.1")
+    assert page.get_by_text("Previously verified on this site: Regular 15.2",exact=False).is_visible()
+    check(0);button("Open Regular · v15.1").click();gone();check(1)
+    assert pref()["version"]=="15.1"
+    setup(m=corrected,body=stable_source);ready("15.2");fallback.click();gone();check(1)
+    assert page.evaluate("calls[2]")==root+stable["path"] and pref()["version"]=="15"
+    setup(m={**corrected,"stable":{**correction,"path":maintenance["path"]}})
+    button("Retry").wait_for();assert button("Regular unavailable").is_disabled() and not fallback.is_visible()
+    check(0);button("Cancel").click();gone()
+    setup(m=corrected,body=maintenance_source);ready("15.2");regular2.click();button("Retry").wait_for()
+    assert "Could not safely check" in page.get_by_role("status").inner_text() and fallback.is_disabled()
+    assert saved() is None;check(0);button("Cancel").click();gone()
+    setup(m=corrected,fail=True);ready("15.2");regular2.click();button("Retry").wait_for()
+    assert fallback.is_disabled() and saved() is None;check(0);button("Cancel").click();gone()
+    setup(m=corrected,body=correction_source,delay=True);ready("15.2");regular2.click();button("Cancel").click();gone()
+    page.wait_for_timeout(500);check(0);assert saved() is None
+    setup(m=corrected,fail=True);ready("15.2");regular2.click();button("Retry").wait_for()
+    page.evaluate("(m)=>{window.fixtureManifest=m;window.fail=false;}",prior_active)
+    button("Retry").click();ready("15.1");check(0);assert len(page.evaluate("calls"))==4
+    assert fallback.is_enabled();button("Cancel").click();gone()
+    setup(m=corrected,fail=True);ready("15.2");fallback.click();button("Retry").wait_for()
+    page.evaluate("(m)=>{window.fixtureManifest=m;window.fail=false;}",manifest)
+    button("Retry").click();ready();assert not fallback.is_visible();check(0);assert len(page.evaluate("calls"))==4
+    button("Cancel").click();gone()
+    assert scenario_count==64 and next(scenarios,None) is None
     # Distribution page is read-only; all requests remain synthetic.
     print("Distribution page: current, missing, invalid, offline and retry",flush=True)
     distribution=browser.new_page(viewport={"width":320,"height":480})
@@ -429,6 +471,23 @@ with sync_playwright() as p:
     assert target.locator('option[value="legacy"]').is_disabled()
     target.select_option("stable");compare.click();assert "Regular v15 is a different release" in result.inner_text()
     print("v15.1 neutral official comparison and rollback PASS",flush=True)
+    selection={**published,"stable":correction}
+    open_distribution();download.wait_for();distribution.get_by_text("Check your version",exact=True).click()
+    assert dist.input_value()=="" and target.input_value()=="" and compare.is_disabled()
+    dist.select_option("bookmarklet");running.select_option("maintenance");target.select_option("stable");compare.click()
+    assert "Regular v15.2 is a different release" in result.inner_text()
+    running.select_option("correction");target.select_option("stable");compare.click()
+    assert "matches the published Regular" in result.inner_text()
+    running.select_option("stable");target.select_option("legacy");compare.click()
+    assert "matches the available legacy fallback" in result.inner_text()
+    dist.select_option("extension");assert target.input_value()=="" and target.locator('option[value="legacy"]').is_disabled()
+    selection={**published,"stable":{**correction,"sha256":"0"*64}}
+    open_distribution();assert not download.is_visible() and distribution.get_by_role("button",name="Try again").is_visible()
+    selection={**published,"stable":maintenance}
+    open_distribution();download.wait_for();distribution.get_by_text("Check your version",exact=True).click()
+    dist.select_option("bookmarklet");running.select_option("correction");target.select_option("stable");compare.click()
+    assert "Regular v15.1 is a different release" in result.inner_text()
+    print("v15.2 neutral official comparison and prior-pin rollback PASS",flush=True)
     selection=published
     # No storage reads, writes or removal, even when legacy preferences exist.
     distribution.add_init_script("""window.storageAccesses=0;
@@ -460,4 +519,4 @@ with sync_playwright() as p:
     print("Homepage discoverability PASS",flush=True)
     browser.close()
 faulthandler.cancel_dump_traceback_later()
-print("54 synthetic scenario executions PASS",flush=True)
+print("64 synthetic scenario executions PASS",flush=True)
