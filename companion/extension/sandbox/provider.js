@@ -22,7 +22,7 @@ export function makeSandbox(){
   const t=target(),slug=t?.campaign;
   if(op==='inspect')return {ok:true,target:t,report:report(),summary:t?L.summary(storage,slug):null,details:t?L.details(storage,slug,t.documentToken):null,recovery:t&&scenario==='success'?T.pendingSelection(storage,slug):null,diagnostics:{enabled,count:events?1:0,eventCount:events,blocked:false}};
   if(op==='getCatalog'||op==='refreshCatalog')return {ok:true,catalog:{outcome:'never',entries:[]}};
-  if(op==='setDiagnostics'){enabled=f.enabled===true;return {ok:true};}
+  if(op==='setDiagnostics'){enabled=f.enabled===true;return {ok:true,enabled,capture:null};}
   if(op==='exportDiagnostics')return {ok:true,export:{schema:'synthetic-only',events}};
   if(!current(f.target))return blocked('context-changed');
   if(op==='captureDiagnostics'){if(!enabled)return blocked('recording-disabled');events++;return {ok:true};}

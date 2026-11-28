@@ -54,3 +54,21 @@ test('queue removal confirmation masks the exact reviewed entries and separates 
  const blocked=workspaceQueueView({state,cp});
  assert.match(blocked,/Absence of confirmation does not prove failure/);assert.doesNotMatch(blocked,/Review safe removals/);
 });
+
+test('diagnostic guidance explains observed stages, unavailable fields and coverage without inferring outcomes',()=>{
+ const state=fixture();Object.assign(state.report,{status:'recognized',campaign:'CA1126VANW',labels:['Submit']});
+ state.report.controls={serial:{present:1,visible:0,actionable:0},submit:{present:1,visible:1,actionable:1},errors:{present:1,visible:0,actionable:0}};
+ state.diagnostics.issue='diagnostics-write-unverified';
+ const html=workspaceSettingsView({state});
+ assert.match(html,/Submit control available/);assert.match(html,/Barcode field is hidden/);
+ assert.match(html,/does not mean an error occurred/);assert.match(html,/could not be confirmed in storage/);
+ assert.match(html,/does not guarantee complete coverage or disable claim controls/);
+ assert.match(html,/leave Companion form, queue and claim actions alone/);
+ assert.match(html,/first observed time/);assert.match(html,/unknown or mixed build identities/);
+ assert.match(html,/How to collect useful evidence/);
+ state.diagnostics.enabled=null;
+ const unknown=workspaceSettingsView({state});
+ assert.match(unknown,/Recording setting unknown/);assert.match(unknown,/data-action="captureDiagnostics" disabled/);
+ const bm=workspaceSettingsView({state,recording:false});
+ assert.match(bm,/Current document only/);assert.doesNotMatch(bm,/id="diagnosticsEnabled"/);
+});

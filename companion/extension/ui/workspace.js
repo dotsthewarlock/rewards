@@ -4,7 +4,7 @@ import {esc,button} from './components.js';
 import {workspaceQueueView} from './views/workspace-queue.js';
 import {workspaceRewardsView} from './views/workspace-rewards.js';
 import {workspaceCampaignsView} from './views/workspace-campaigns.js';
-import {workspaceSettingsView} from './views/workspace-settings.js';
+import {workspaceSettingsView,diagnosticMessage} from './views/workspace-settings.js';
 import '../core/workspace-contract.js';
 // Platform-neutral workspace. The transport owns identity, persistence and authorization.
 export function mountWorkspace(root,request,{recording=true}={}){
@@ -14,7 +14,7 @@ const version=marker?.dataset.buildVersion,commit=marker?.dataset.buildCommit;
 const build=/^\d+\.\d+\.\d+$/.test(version||'')&&/^[a-f0-9]{40}$/.test(commit||'')?
   Object.freeze({version,commit,distribution:recording?'Chrome extension':'Bookmarklet'}):null;
 let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null,removal=null,removalEpoch=0;
-let catalog=null,catalogBusy=false,catalogError=false;
+let catalog=null,catalogBusy=false,catalogError=false,diagnosticBusy=false;
 let revealedReward=null,revealEpoch=0,revealTimer=null;
 function hideReward(){revealEpoch++;clearTimeout(revealTimer);revealTimer=null;const shown=!!revealedReward;revealedReward=null;return shown;}
 const editMessage={
@@ -58,6 +58,7 @@ async function loadCatalog(refreshPublic=false){
  }
 }
 function render(){
+ const instructionsOpen=$('diagnosticInstructions')?.open;
  const focus=root.activeElement;
  const field=['importDraft','emailDraft','browseSearch'].includes(focus?.id)?focus.id:null;
  const selection=['importDraft','browseSearch'].includes(field)?[focus.selectionStart,focus.selectionEnd]:null;
@@ -68,8 +69,9 @@ function render(){
  const body=screen==='queue'?workspaceQueueView({state,cp,draft,preview,page,editing,reviewed,removal}):
    screen==='rewards'?workspaceRewardsView({state,browseTab,browseSearch,rewardPage,historyPage,revealedReward}):
    screen==='campaigns'?workspaceCampaignsView({cp,recording,catalog,catalogBusy,catalogError}):
-   workspaceSettingsView({state,emailDraft,editing,recording,build});
+   workspaceSettingsView({state,emailDraft,editing,recording,build,diagnosticBusy});
  $('workspace').innerHTML='<section class="stack">'+body+button('Refresh connection','refresh')+'</section>';
+ if(instructionsOpen&&$('diagnosticInstructions'))$('diagnosticInstructions').open=true;
  if(field&&$(field)){const el=$(field);el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}
  else if(action){
    const next=[...root.querySelectorAll('[data-action]')].find(el=>el.dataset.action===action&&el.dataset.value===value&&!el.disabled);
@@ -257,19 +259,26 @@ root.addEventListener('click',async e=>{
    }catch{$('announcement').textContent='Export unavailable. Refresh the current campaign and try again.';}
  }
  if(target.dataset.action==='captureDiagnostics'){
-   if(!e.isTrusted||!state?.target||!state?.diagnostics?.enabled||state?.diagnostics?.blocked)return;
-   const selected=state.target;target.disabled=true;
+   if(!e.isTrusted||diagnosticBusy||!state?.target||state?.diagnostics?.enabled!==true||state?.diagnostics?.blocked)return;
+   const selected=state.target;diagnosticBusy=true;render();
    let result;try{result=await request('captureDiagnostics',{target:selected});}catch{}
-   if(!alive())return;
+   diagnosticBusy=false;if(!alive())return;
    await refresh();
-   if(alive())$('announcement').textContent=result?.ok?'Current structural evidence recorded.':'Capture not confirmed. Check the current campaign and recording status.';
+   if(alive())$('announcement').textContent=result?.ok?'Current structural evidence saved and verified.':'Capture not confirmed. '+diagnosticMessage(result?.reason);
    return;
  }
  if(target.dataset.action==='export'){
-   try{const r=await request('exportDiagnostics');if(!r.ok||!alive())throw Error();
-     const url=URL.createObjectURL(new Blob([JSON.stringify(r.export,null,2)],{type:'application/json'}));
+   if(!e.isTrusted||diagnosticBusy)return;
+   try{const r=await request('exportDiagnostics');if(!r?.ok||!alive()){
+       if(alive())$('announcement').textContent='Export not available. '+diagnosticMessage(r?.reason);return;
+     }
+     // The generated workspace marker identifies the actual exporter; do not
+     // assign its build to historical/mixed retained observations.
+     const packet=r.export?.schema==='rewards.structural-export/1'?{...r.export,provenance:{...r.export.provenance,
+       exporter:{distribution:recording?'mv3':'bookmarklet',version:build?.version??null,commit:build?.commit??null}}}:r.export;
+     const url=URL.createObjectURL(new Blob([JSON.stringify(packet,null,2)],{type:'application/json'}));
      const a=document.createElement('a');a.href=url;a.download='rewards-structural-diagnostics.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-     $('announcement').textContent='Diagnostic export requested.';
+     $('announcement').textContent='Diagnostic file download requested. Review it privately before sharing.';
    }catch{$('announcement').textContent='Export failed.';}
  }
 });
@@ -288,7 +297,7 @@ root.addEventListener('input',e=>{
  const control=root.querySelector('[data-action="previewImport"]');if(control)control.disabled=editing||!draft.trim();
  const add=root.querySelector('[data-action="addQueue"]');if(add)add.disabled=editing||!!state?.summary?.unresolved||!draft.trim();
 });
-root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
+root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){if(!e.isTrusted||diagnosticBusy||!recording)return;const enabled=e.target.checked;diagnosticBusy=true;render();let result;try{result=await request('setDiagnostics',{enabled});}catch{}diagnosticBusy=false;if(!alive())return;await refresh();if(!alive())return;const verified=result?.ok&&result.enabled===enabled&&state?.diagnostics?.enabled===enabled;$('announcement').textContent=verified?('Recording '+(enabled?'on':'off')+' — preference saved and verified.'+(enabled?(result.capture==='recorded'?' Current evidence saved and verified.':result.capture?' Initial capture not confirmed. '+diagnosticMessage(result.capture):' No initial capture confirmed; use manual capture on the merchant tab.'):' Earlier evidence retained.')):diagnosticMessage('diagnostics-preference-unverified');}});
 const visibility=()=>{if(document.hidden){const hadRemoval=!!removal;discardRemoval();if((hideReward()||hadRemoval)&&alive())render();}};
 document.addEventListener('visibilitychange',visibility);
 root.host?.addEventListener('rewards-companion-close',()=>{hideReward();discardRemoval();document.removeEventListener('visibilitychange',visibility);},{once:true});

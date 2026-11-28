@@ -5,7 +5,7 @@ import json
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from queue_removal_fixture import ROWS, PREFIX, FAULT, seed, snapshot, assert_removed, hold_lock
-from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
+from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured, HIDDEN_BARCODE_FIXTURE, enter_hidden_barcode, inactive_barcode, hidden_final
 root=Path(__file__).resolve().parents[1]
 script=(root/".build/bookmarklet.js").read_text()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW"><main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET"><button type="button">Get My Bonus</button></div></form></main><script>
@@ -78,6 +78,21 @@ with sync_playwright() as p:
     with page.expect_download() as dl:
         host.get_by_role("button",name="Download CSV").click()
     assert '"TEST_SECRET_CARD","0000"' in Path(dl.value.path()).read_text(encoding="utf-8-sig")
+    host.get_by_role("button",name="Settings",exact=True).click()
+    expect(host).to_contain_text("Current document only")
+    expect(host.get_by_label("Record sanitized structural observations")).to_have_count(0)
+    with page.expect_download() as dl:
+        host.get_by_role("button",name="Export diagnostics").click()
+    packet=json.loads(Path(dl.value.path()).read_text())
+    assert packet["provenance"]["exporter"]=={"distribution":"bookmarklet","version":"0.6.0" if os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA")}
+    assert packet["provenance"]["snapshotTime"]=="current-observation" and packet["provenance"]["captureBuild"]=="current-exporter"
+    assert packet["provenance"]["scope"]=="current-document" and packet["provenance"]["coverageComplete"] is False
+    assert len(packet["records"])==1 and "events" not in packet
+    assert packet["records"][0]["at"]==packet["provenance"]["exportedAt"]
+    assert "SYNTHETIC_SECRET" not in json.dumps(packet) and "TEST_SECRET_CARD" not in json.dumps(packet)
+    assert "000000000000000000000000000001" not in json.dumps(packet)
+    assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.merchantActions===0")
+    host.get_by_role("button",name="Rewards",exact=True).click()
     page.evaluate("document.body.dataset.slug='CA1126PZFT'")
     host.get_by_role("button",name="Download CSV").click()
     expect(host.locator("#announcement")).to_contain_text("Export unavailable")
@@ -246,6 +261,34 @@ with sync_playwright() as p:
     host.get_by_role("button",name="Authorize reviewed claim").click()
     expect(host.locator("#announcement")).to_contain_text("Submission not confirmed")
     assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.submits===0")
+    # Actual generated bookmarklet: earlier barcode node remains hidden at final.
+    ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=HIDDEN_BARCODE_FIXTURE))
+    page.goto(FINAL_URL)
+    page.evaluate(script)
+    enter_hidden_barcode(page)
+    host.get_by_role("button",name="Settings",exact=True).click()
+    host.get_by_role("button",name="Refresh connection").click()
+    expect(host).to_contain_text("Barcode entry observed")
+    inactive_barcode(page)
+    host.get_by_role("button",name="Refresh connection").click()
+    expect(host).to_contain_text("Barcode field is visible but inactive or disabled")
+    hidden_final(page)
+    host.get_by_role("button",name="Refresh connection").click()
+    expect(host).to_contain_text("Barcode field is hidden")
+    expect(host).to_contain_text("Submit control available")
+    with page.expect_download() as dl:
+        host.get_by_role("button",name="Export diagnostics").click()
+    packet=json.loads(Path(dl.value.path()).read_text())
+    assert packet["records"][0]["report"]["controls"]["serial"]=={"present":1,"visible":0,"actionable":0}
+    assert CODE not in json.dumps(packet)
+    host.get_by_role("button",name="Queue",exact=True).click()
+    host.get_by_role("button",name="Review final claim").click()
+    expect(host.get_by_role("button",name="Authorize reviewed claim")).to_have_count(0)
+    page.evaluate("window.fixtureBarcode.value='987654321098765432109876543210'")
+    host.get_by_role("button",name="Review final claim").click()
+    expect(host.get_by_role("button",name="Authorize reviewed claim")).to_have_count(0)
+    assert page.evaluate("window.submits===0 && JSON.stringify(Object.entries(localStorage).sort())===window.before")
+    print("Packaged bookmarklet diagnostic identity/current-document export and hidden barcode counterexample PASS",flush=True)
     # Start from a real synthetic welcome stage, not a prefilled final form.
     ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=WORKFLOW_FIXTURE))
     page.reload()
