@@ -20,9 +20,10 @@
    * redemption sequence and safety checks around success pages:
    * an exact success barcode + GC/PIN completes that barcode, Claim Another must
    * transition to a fresh redemption page before another queue item can start, and
-   * a submitted/pending current item is retried from the beginning after refresh.
-   * 15.1 accepts unambiguous nested visible credential markers and verifies
-   * linked cache writes before progression. It does not change claim or replay authority.
+   * v15 retried a submitted/pending current item after refresh.
+   * 15.1 accepts unambiguous nested visible credential markers, verifies linked
+   * cache writes before progression, and stops unresolved submitted attempts
+   * across restart. A fresh form or absent reward cache is not proof of failure.
    * The visible branding and body[data-project] value are NOT reliable application
    * identifiers.
    *
@@ -90,8 +91,8 @@
    * ------------
    * Redemptions are strictly serial: one code at a time. `pending` is created only
    * for a real submit attempt whose final outcome is not yet confirmed. A pending
-   * current item always takes priority over later queued items; on a fresh redemption
-   * page it is retried from Step 1. Bookmarklet invocation is the same practical
+   * current item always takes priority over later queued items; without exact linked
+   * success it remains unresolved, even on a fresh entry page. Invocation is the same practical
    * Start/Pause/Resume toggle as the UI control and never changes Auto-Redeem state.
    *
    * HISTORY PRIVACY
@@ -584,11 +585,9 @@
     },
     recover(slug) {
       /*
-       * Pending is valid only after a real submit attempt. v10/v11 could leave
-       * pre-submit rows marked pending, which blocked navigation before the v8
-       * interaction engine could even click Get My Bonus. Preserve a pending row
-       * only when durable evidence says submit was attempted: a submitted timestamp
-       * on the row or the matching active record with phase="submitted".
+       * Preserve pending as unresolved even when a historical row lacks a
+       * submitted timestamp or active record: missing evidence does not prove
+       * non-submission. Ordinary pre-submit processing recovery remains unchanged.
        */
       const active = QUEUE.active(slug);
       const rows = QUEUE.load(slug);
@@ -602,11 +601,6 @@
         if (row.state === 'processing') {
           row.state = submittedEvidence ? 'pending' : 'queued';
           row.note = submittedEvidence ? 'Previous submitted state was not verified' : 'Recovered before submission';
-          row.updated = Date.now();
-          changed = true;
-        } else if (row.state === 'pending' && !submittedEvidence) {
-          row.state = 'queued';
-          row.note = 'Recovered false pre-submit pending state';
           row.updated = Date.now();
           changed = true;
         }
@@ -1659,9 +1653,8 @@
       }
       const pending = QUEUE.unresolvedPending(currentSlug);
       if (pending) {
-        // A submitted current item outranks every later queued item. If its success
-        // was already cached, repair the queue; otherwise a fresh redemption page
-        // means retry this same code from Step 1, never advance to the next code.
+        // A submitted current item outranks every later queued item. Repair only
+        // fully linked cached success; otherwise stop even on a fresh entry page.
         const cachedGift = GIFTS.load(currentSlug).find(row =>
           row && row.sourceRedemptionCode === pending.code && GIFTS.valid(row)
         );
@@ -1677,21 +1670,10 @@
           }
           return APPCTL.prepareItem();
         }
-        if (!PAGE.redemptionFingerprintOK() || DOM.done()) {
-          UI.status(`Pending verification remains current: …${pending.code.slice(-4)}`, 'pending');
-          return null;
-        }
-        // Keep the row pending/current while replaying it. That preserves the
-        // previous submit ambiguity across pause/refresh until this exact barcode
-        // either reaches a confirmed success page or is submitted again.
-        QUEUE.patch(currentSlug, pending.id, { note: 'Retrying submitted/current item from the beginning' });
-        QUEUE.setActive(currentSlug, {
-          id: pending.id,
-          code: pending.code,
-          phase: 'submitted',
-          ts: Number(pending.submitted || Date.now())
-        });
-        return QUEUE.find(currentSlug, pending.id);
+        // Capture may have failed before writing any reward/history evidence.
+        // Neither a fresh form nor absent cache authorizes another submission.
+        UI.status(`Pending verification remains current: …${pending.code.slice(-4)} — queue halted`, 'pending');
+        return null;
       }
 
       if (QUEUE.active(currentSlug)?.phase==='submitted'||QUEUE.active(currentSlug)?.schema||
@@ -1800,7 +1782,7 @@
         if (pageError) {
           const row = QUEUE.find(currentSlug, item.id);
           if (row && row.state === 'pending') {
-            UI.status(`Page error after submission …${cur.slice(-4)} — verify before retrying`, 'pending');
+            UI.status(`Page error after submission …${cur.slice(-4)} — verify outcome before continuing`, 'pending');
           } else {
             QUEUE.patch(currentSlug, item.id, { state: 'error', note: pageError });
             QUEUE.setActive(currentSlug, null);
@@ -1952,7 +1934,7 @@
               // this current submission failed. Leave this item pending/current so
               // the next invocation retries the same barcode from the beginning.
               if (captured.successCode !== cur) {
-                UI.status(`Previous success reconciled — retry current …${cur.slice(-4)}`, 'pending');
+                UI.status(`Previous success reconciled — current outcome unresolved …${cur.slice(-4)}`, 'pending');
                 return false;
               }
               return true;
@@ -1960,11 +1942,11 @@
 
             const error = DOM.errorText();
             if (error) {
-              // After a real submit, errors remain retryable current/pending state.
-              // Refresh + reinvoke will replay this same barcode before any later one.
+              // A post-submit error is not proof of non-submission. Keep the
+              // current item pending; refresh/reinvoke cannot authorize replay.
               QUEUE.patch(currentSlug, item.id, { state: 'pending', note: `Page error after submission: ${error}` });
               QUEUE.setActive(currentSlug, { id: item.id, code: cur, phase: 'submitted', ts: submittedAt });
-              UI.status(`Page error after submission …${cur.slice(-4)} — refresh/reinvoke to retry`, 'pending');
+              UI.status(`Page error after submission …${cur.slice(-4)} — verify outcome before continuing`, 'pending');
               return false;
             }
 
@@ -2040,7 +2022,7 @@
       }
       // Match v8 navigation semantics: do not block Get My Bonus/Next just because
       // email is not configured yet. Validate email only when the active email step
-      // is actually reached. A pending/current item is resumed before later queued items.
+      // is actually reached. An unresolved pending item blocks later queued items.
       APPCTL.running = true;
       UI.play();
       UI.status(`Running ${currentSlug}`, 'pending');

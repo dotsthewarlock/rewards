@@ -18,7 +18,7 @@ BAD_FIELDS = {
     "empty label": FLAT.replace('>Bonus Code<','><'),
     "nested markers": FLAT.replace('>Bonus Code<','><span class="text">Bonus Code</span><'),
 }
-def success_fixture(nested=False):
+def success_fixture(nested=False, seed=True):
     review = dict(origin="https://getmybonus.ca",campaign=SLUG,
         documentToken="00000000-0000-0000-0000-000000000001",
         attemptId="00000000-0000-0000-0000-000000000002",queueId="fixture-row",
@@ -27,6 +27,9 @@ def success_fixture(nested=False):
     active = dict(id="fixture-row",code=CODE,phase="submitted",ts=1,schema="rewards.pending/1",attempt=review)
     queue = [dict(id="fixture-row",code=CODE,state="pending",submitted=1),
              dict(id="next-row",code=OTHER,state="queued")]
+    seed_script = f"""localStorage.clear();
+localStorage.setItem('bs_rewards:{SLUG}:active',JSON.stringify({json.dumps(active)}));
+localStorage.setItem('bs_rewards:{SLUG}:queue',JSON.stringify({json.dumps(queue)}));""" if seed else ""
     return f"""<!doctype html><html><body data-slug="{SLUG}">
 <main class="value-add wizard"><section class="redemption-form">
 <p id="eligible">Eligible Card: {OTHER}</p>
@@ -34,14 +37,12 @@ def success_fixture(nested=False):
 <div class="codes-container">{NESTED if nested else FLAT}</div></div>
 <button class="btn-claim-another-code">Claim Another</button></section></main>
 <script>
-localStorage.clear();
-localStorage.setItem('bs_rewards:{SLUG}:active',JSON.stringify({json.dumps(active)}));
-localStorage.setItem('bs_rewards:{SLUG}:queue',JSON.stringify({json.dumps(queue)}));
+{seed_script}
 window.merchantActions=0;
 document.querySelector('main').addEventListener('click',()=>window.merchantActions++);
 window.before=JSON.stringify(Object.entries(localStorage).sort());
 </script></body></html>"""
-def assert_captured(page):
+def assert_captured(page, number="000012345678", pin="0000"):
     data=page.evaluate("""()=>({active:localStorage.getItem('bs_rewards:CA1126VANW:active'),
       queue:JSON.parse(localStorage.getItem('bs_rewards:CA1126VANW:queue')),
       rewards:JSON.parse(localStorage.getItem('bs_rewards:CA1126VANW:giftcards')),
@@ -51,8 +52,8 @@ def assert_captured(page):
     assert [r["state"] for r in data["queue"]] == ["complete","queued"]
     assert len(data["rewards"]) == len(data["history"]) == 1
     assert data["rewards"][0]["sourceRedemptionCode"] == data["history"][0]["code"] == CODE
-    assert data["rewards"][0]["gcNumber"] == "000012345678"
-    assert data["rewards"][0]["gcPin"] == "0000"
+    assert data["rewards"][0]["gcNumber"] == number
+    assert data["rewards"][0]["gcPin"] == pin
 
 def exercise_legacy_maintenance(playwright):
     from pathlib import Path
@@ -68,7 +69,24 @@ def exercise_legacy_maintenance(playwright):
     browser=playwright.chromium.launch()
     try:
         context=browser.new_context()
-        context.route("**/*",lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()) if route.request.url==URL else route.abort())
+        entry_url=URL.rsplit("/",1)[0]+"/synthetic-entry"
+        retained_url=URL+"?retained=1"
+        entry=f"""<!doctype html><html><body data-slug="{SLUG}">
+<main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active">
+<input class="wizard-serial-number" name="fixture"><button type="button">Get My Bonus</button>
+</div></form></main>
+<script>
+window.merchantActions=0;
+const form=document.querySelector('form');
+for(const name of ['click','input','change','keydown','submit']) form.addEventListener(name,e=>{window.merchantActions++;e.preventDefault();});
+</script></body></html>"""
+        def route_fixture(route):
+            bodies={URL:success_fixture(),entry_url:entry,retained_url:success_fixture(nested=True,seed=False)}
+            if route.request.url in bodies:
+                route.fulfill(status=200,content_type="text/html",body=bodies[route.request.url])
+            else:
+                route.abort()
+        context.route("**/*",route_fixture)
         page=context.new_page()
         prefix="bs_rewards:"+SLUG+":"
         def setup(fields=FLAT,eligible=CODE,disable=False):
@@ -83,6 +101,28 @@ def exercise_legacy_maintenance(playwright):
             return page.evaluate("""p=>Object.fromEntries(['giftcards','history','queue','active'].map(n=>[n,JSON.parse(localStorage.getItem(p+n)||'null')]))""",prefix)
         def stopped():
             assert page.evaluate("window.merchantActions") == 0
+        def assert_restart_stopped(expected):
+            # Navigate to a different document on the same synthetic origin.
+            # The entry fixture must never seed, clear or modify retained cache.
+            page.goto(entry_url)
+            assert page.evaluate("typeof window.__BS_REWARDS__==='undefined'")
+            assert cache()==expected
+            run()
+            stopped()
+            assert cache()==expected
+            assert page.locator(".wizard-serial-number").input_value()==""
+            # A second invocation also must not replay the pending item.
+            run()
+            stopped()
+            assert cache()==expected
+        def recover_retained_confirmation(number="000012345678",pin="0000"):
+            page.goto(retained_url)
+            page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
+            page.locator(".codes-container").evaluate("(el,html)=>el.innerHTML=html",
+                NESTED.replace("0000<span>12345678</span>",number).replace(">0000</span></div></section>",">"+pin+"</span></div></section>"))
+            page.locator(".btn-claim-another-code").evaluate("el=>el.disabled=true")
+            run()
+            assert_captured(page,number,pin)
         for fields in (FLAT,NESTED):
             setup(fields,disable=True)
             run()
@@ -121,6 +161,30 @@ def exercise_legacy_maintenance(playwright):
                 page.evaluate("window.restoreFault();document.querySelector('.btn-claim-another-code').disabled=true")
                 run()
                 assert_captured(page)
+        # Counterexample from ARCH: failure before any durable capture evidence,
+        # then a fresh recognized entry. No new marker can be relied on.
+        for failure in ("parser","throw","ignore"):
+            setup(BAD_FIELDS["missing value"] if failure=="parser" else NESTED)
+            if failure!="parser":
+                page.evaluate("""([p,mode])=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k===p+'giftcards'){if(mode==='throw')throw Error('synthetic quota');return;}return set.call(this,k,v);}}""",[prefix,failure])
+            before=cache()
+            run()
+            stopped()
+            assert cache()==before and before["giftcards"] is None and before["history"] is None,failure
+            assert_restart_stopped(before)
+            recover_retained_confirmation("00AB12CD34","00X9")
+        # Older pending rows can lack one or both submission markers. Absence
+        # alone is not evidence that they were never submitted.
+        for markers in ("timestamp-only","active-only","neither"):
+            setup(BAD_FIELDS["missing value"])
+            page.evaluate("""([p,mode])=>{if(mode!=='active-only')localStorage.removeItem(p+'active');if(mode!=='timestamp-only'){const q=JSON.parse(localStorage.getItem(p+'queue'));delete q[0].submitted;localStorage.setItem(p+'queue',JSON.stringify(q));}}""",[prefix,markers])
+            before=cache()
+            run()
+            stopped()
+            assert cache()==before
+            assert_restart_stopped(before)
+            recover_retained_confirmation()
         print("Legacy v15.1 real synthetic bootstrap: flat/nested, exact strings, ambiguity, wrong/missing source, conflicts, all four thrown/ignored writes, exact retry and no advancement on failure PASS",flush=True)
+        print("Legacy v15.1 restart safety: parser/first reward throw/ignored write, retained fresh entry, missing submission markers, repeated invocation, zero actions/cache progression, alphanumeric linked confirmation recovery PASS",flush=True)
     finally:
         browser.close()
