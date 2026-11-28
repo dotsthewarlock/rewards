@@ -26,7 +26,7 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 <button id="retry" type="button" hidden>Try again</button>
 <section aria-labelledby="bookmark-title">
 <h2 id="bookmark-title">Browser bookmark</h2>
-<p>Open Rewards Companion from a saved bookmark. Choose Regular (original production version) or Preview (testing only) each time. Opening always requires your action.</p>
+<p>Open Rewards Companion from a saved bookmark. Choose Regular or Preview (testing only) each time. Opening always requires your action.</p>
 <p id="regular" class="note">Checking the regular version…</p>
 <a class="action" href="bootstrap.txt">Get the bookmarklet</a>
 <details>
@@ -54,13 +54,13 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 <label for="distribution">How do you open Rewards Companion?</label>
 <select id="distribution" autocomplete="off"><option value="">Choose how you open it</option><option value="extension">Chrome extension</option><option value="bookmarklet">Browser bookmark</option></select>
 <label for="running">Version you are using</label>
-<select id="running" disabled autocomplete="off"><option value="unknown">Not sure</option><option value="stable">Regular v15 (original bookmark)</option><option value="dev">Preview</option></select>
+<select id="running" disabled autocomplete="off"><option value="unknown">Not sure</option><option value="stable">Regular v15 (original bookmark)</option><option value="maintenance">Regular v15.1 (if already using)</option><option value="dev">Preview</option></select>
 <div id="running-details" hidden>
 <label for="running-version">Version number</label><input id="running-version" type="text" maxlength="32" placeholder="0.6.0" autocomplete="off" spellcheck="false">
 <label for="running-commit">Full source ID from version details</label><input id="running-commit" type="text" maxlength="40" autocomplete="off" spellcheck="false">
 </div>
 <label for="preferred">Compare with</label>
-<select id="preferred" disabled autocomplete="off" aria-describedby="comparison-note"><option value="">Choose a version</option><option value="stable">Regular (original production version)</option><option value="dev">Preview (testing only)</option></select>
+<select id="preferred" disabled autocomplete="off" aria-describedby="comparison-note"><option value="">Choose a version</option><option value="stable">Regular</option><option value="legacy" hidden disabled>Original v15 (legacy fallback)</option><option value="dev">Preview (testing only)</option></select>
 <p id="comparison-note" class="note">Choose how you open Companion, then a version to compare with.</p>
 <button id="compare" type="button" class="compare-action" disabled>Compare versions</button>
 <p id="comparison-result" role="status" aria-atomic="true">Enter your exact version to compare. This page cannot detect your installed version.</p>
@@ -77,7 +77,9 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 const $=id=>document.getElementById(id);
 const root=new URL('../../',location.href),base='companion/launcher/';
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
-const stable=c=>c?.version==='15'&&c.path==='redeem/Redeem_Prepaid_Rewards_v15.js'&&c.sha256==='23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1';
+const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"});
+const pinned=(c,p)=>c&&Object.keys(c).length===3&&c.version===p.version&&c.path===p.path&&c.sha256===p.sha256;
+const stable=c=>pinned(c,ORIGINAL)||pinned(c,MAINTENANCE);
 const preview=c=>{
   if(typeof c?.version!=='string'||!/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(c.version)||!sha(c.sha256))return false;
   const folder=base+'releases/'+c.version+'/';
@@ -104,7 +106,7 @@ async function getJSON(url){
     return JSON.parse(text+decoder.decode());
   }finally{await reader.cancel().catch(()=>{});}
 }
-let loading=false,verified=null,regularAvailable=false;
+let loading=false,verified=null,regularAvailable=false,regularVersion=null;
 const unknown='Exact comparison unavailable. Check your version details; no update has been selected.';
 function resetComparison(){ $('comparison-result').textContent=unknown; }
 function updateControls(){
@@ -113,8 +115,12 @@ function updateControls(){
   const running=$('running'),target=$('preferred');
   running.disabled=!chosen;
   running.querySelector('[value="stable"]').disabled=distribution!=='bookmarklet';
+  running.querySelector('[value="maintenance"]').disabled=distribution!=='bookmarklet';
   target.disabled=!chosen||loading;
-  target.querySelector('[value="stable"]').disabled=distribution!=='bookmarklet'||!regularAvailable;
+  const regularOption=target.querySelector('[value="stable"]'),legacyOption=target.querySelector('[value="legacy"]');
+  regularOption.disabled=distribution!=='bookmarklet'||!regularAvailable;
+  regularOption.textContent=regularVersion==='15.1'?'Regular v15.1 (recommended within Regular)':regularVersion==='15'?'Regular v15':'Regular';
+  legacyOption.hidden=regularVersion!=='15.1';legacyOption.disabled=legacyOption.hidden||distribution!=='bookmarklet'||!regularAvailable;
   target.querySelector('[value="dev"]').disabled=!verified;
   if(target.value&&target.selectedOptions[0].disabled)target.value='';
   $('running-details').hidden=running.value!=='dev'||!chosen;
@@ -134,12 +140,18 @@ for(const id of ['running-version','running-commit'])$(id).addEventListener('inp
 $('compare').addEventListener('click',()=>{
   const running=$('running').value,distribution=$('distribution').value,preferred=$('preferred').value;
   let result=unknown;
-  if(!['extension','bookmarklet'].includes(distribution)||!['stable','dev'].includes(preferred)||loading||$('compare').disabled){resetComparison();return;}
-  if(preferred==='stable'&&distribution==='extension')result='Regular is not available for the Chrome extension. Choose Preview explicitly to compare.';
-  else if(preferred==='stable'&&!regularAvailable||preferred==='dev'&&!verified)result='The selected version could not be checked. Your current version has not changed.';
-  else if(running==='stable'&&distribution==='bookmarklet')result=preferred==='stable'?'The Regular v15 you selected matches the published Regular version.':'The published Preview is a different release. Switching is your choice; do not switch during an unfinished claim.';
-  else if(running==='dev'&&/^\d+\.\d+\.\d+$/.test($('running-version').value.trim())&&commitOK($('running-commit').value.trim())){
-    if(preferred==='stable')result='Regular v15 is a different release. Switching is your choice; do not switch during an unfinished claim.';
+  if(!['extension','bookmarklet'].includes(distribution)||!['stable','legacy','dev'].includes(preferred)||loading||$('compare').disabled){resetComparison();return;}
+  const regularTarget=preferred==='stable'?regularVersion:preferred==='legacy'&&regularVersion==='15.1'?'15':null;
+  const runningRegular=distribution==='bookmarklet'?(running==='stable'?'15':running==='maintenance'?'15.1':null):null;
+  const switching=' Switching is your choice; do not switch during an unfinished claim.';
+  if(preferred!=='dev'&&distribution!=='bookmarklet')result='Regular is not available for the Chrome extension. Choose Preview explicitly to compare.';
+  else if(preferred!=='dev'&&(!regularAvailable||!regularTarget)||preferred==='dev'&&!verified)result='The selected version could not be checked. Your current version has not changed.';
+  else if(runningRegular){
+    if(preferred==='dev')result='The published Preview is a different release.'+switching;
+    else if(runningRegular===regularTarget)result=preferred==='stable'?'The Regular v'+runningRegular+' you selected matches the published Regular version.':'The original v15 you selected matches the available legacy fallback.';
+    else result='Regular v'+regularTarget+' is a different release.'+switching;
+  }else if(running==='dev'&&/^\d+\.\d+\.\d+$/.test($('running-version').value.trim())&&commitOK($('running-commit').value.trim())){
+    if(preferred!=='dev')result='Regular v'+regularTarget+' is a different release.'+switching;
     else if($('running-version').value.trim()===verified.version&&$('running-commit').value.trim()===verified.commit)result='Your exact Preview build matches the published Preview.';
     else result='A different Preview build is published. This does not establish which build is newer. Review the version details before changing.';
   }
@@ -147,7 +159,7 @@ $('compare').addEventListener('click',()=>{
 });
 $('distribution').value='';$('running').value='unknown';clearIdentity();
 async function refresh(){
-  if(loading)return;loading=true;verified=null;regularAvailable=false;$('preferred').value='';resetComparison();updateControls();$('retry').hidden=true;
+  if(loading)return;loading=true;verified=null;regularAvailable=false;regularVersion=null;$('preferred').value='';resetComparison();updateControls();$('retry').hidden=true;
   for(const id of ['package','provenance']){$(id).hidden=true;$(id).removeAttribute('href');}
   $('checksum').hidden=true;$('exact').textContent='Exact published Preview identity is unavailable.';
   $('regular').textContent='Checking the regular version…';$('preview').textContent='Checking available Preview…';
@@ -155,7 +167,7 @@ async function refresh(){
   try{
     const data=await getJSON('channels.json');
     if(data?.schema!==1||!stable(data.stable))throw Error('Invalid release details');
-    regularAvailable=true;$('regular').textContent='Regular (Stable) · version '+data.stable.version;
+    regularAvailable=true;regularVersion=data.stable.version;$('regular').textContent='Regular (Stable) · version '+regularVersion+(regularVersion==='15.1'?' — recommended within Regular; original v15 remains available as a legacy fallback.':'');
     if(preview(data.dev)){
       const c=data.dev;
       if(packageOK(c)){

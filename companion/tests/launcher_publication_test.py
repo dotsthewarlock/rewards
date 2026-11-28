@@ -109,6 +109,38 @@ class PublicationTests(unittest.TestCase):
         self.assertNotEqual(m.digest(altered),candidate["packageSha256"])
         with self.assertRaises(ValueError):m.unpack(altered,evidence["commit"],m.digest(altered),verify_historical=True)
         print("Historical exact archive compatibility PASS; no prepare/activate exemption",flush=True)
+    def test_maintenance_pin_and_staged_bytes(self):
+        source_repo=Path(__file__).resolve().parents[2]
+        actual=(source_repo/m.MAINTENANCE["path"]).read_bytes()
+        self.assertEqual(m.digest(actual),m.MAINTENANCE["sha256"])
+        import hashlib
+        self.assertEqual(hashlib.sha1(b"blob "+str(len(actual)).encode()+b"\0"+actual).hexdigest(),m.MAINTENANCE_BLOB)
+        current=m.load((source_repo/(m.BASE+"channels.json")).read_bytes())
+        with tempfile.TemporaryDirectory() as folder:
+            repo=Path(folder)
+            for path in m.FROZEN:
+                dest=repo/path;dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_bytes((source_repo/path).read_bytes())
+            target=repo/(m.BASE+"channels.json")
+            dest=repo/m.MAINTENANCE["path"];dest.parent.mkdir(parents=True,exist_ok=True)
+            def pointer(pin):target.write_bytes(m.json_bytes({**current,"stable":pin}))
+            pointer(m.STABLE);self.assertEqual(m.manifest(repo)["stable"],m.STABLE)
+            pointer(m.MAINTENANCE)
+            with self.assertRaises(ValueError):m.manifest(repo)
+            dest.write_bytes(actual);self.assertEqual(m.manifest(repo)["stable"],m.MAINTENANCE)
+            for bad in ({**m.MAINTENANCE,"sha256":"0"*64},{**m.MAINTENANCE,"path":m.STABLE["path"]},{**m.MAINTENANCE,"version":"15.2"},{**m.MAINTENANCE,"extra":True}):
+                pointer(bad)
+                with self.assertRaises(ValueError):m.manifest(repo)
+            pointer(m.STABLE);self.assertEqual(m.manifest(repo)["stable"],m.STABLE)
+            dest.write_bytes(actual+b" ")
+            with self.assertRaises(ValueError):m.manifest(repo)
+            pointer(m.MAINTENANCE)
+            with self.assertRaises(ValueError):m.manifest(repo)
+        # Existing hosted verifier includes the staged exact source even when the pointer is v15.
+        with patch.object(m,"hosted") as hosted:
+            m.verify(source_repo,0)
+            hosted.assert_any_call(m.MAINTENANCE["path"],m.MAINTENANCE["sha256"])
+        print("v15.1 exact staged blob, pin and hosted verification PASS",flush=True)
     def test_two_phase(self):
         data,run,art,_=fixture()
         old={"version":"0.6.0-dev-"+"b"*12,"path":"companion/launcher/releases/0.6.0-dev-"+"b"*12+".js","sha256":"0"*64}
