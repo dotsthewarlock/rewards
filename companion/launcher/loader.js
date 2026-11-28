@@ -29,9 +29,11 @@
   const dialog = document.createElement('dialog');
   const add = (tag,text,cls,parent=dialog) => {const el=document.createElement(tag);el.textContent=text;if(cls)el.className=cls;parent.append(el);return el;};
   const title=add('h2','Rewards Companion');title.id='loader-title';title.tabIndex=-1;title.setAttribute('autofocus','');dialog.setAttribute('aria-labelledby',title.id);
-  const description=add('p','Regular v15 is the original production version and may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
+  const description=add('p','Regular may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.');description.id='loader-description';dialog.setAttribute('aria-describedby',description.id);
   const stable=add('button','Open Regular','open'),dev=add('button','Open Preview','open');
   const meta=add('p','For testing only. Do not use for real claims.','meta');meta.id='loader-dev';dev.setAttribute('aria-describedby',meta.id);
+  const legacy=add('button','Open original v15 (legacy fallback)','dev');legacy.hidden=true;
+  const legacyNote=add('p','Use only if it is safe to switch. The original version does not include the maintenance correction.','meta');legacyNote.hidden=true;legacyNote.id='loader-legacy';legacy.setAttribute('aria-describedby',legacyNote.id);
   const more=add('details','');more.hidden=true;add('summary','More testing options','',more);
   const test=add('button','Test','dev',more),purpose=add('p','','meta',more);purpose.id='loader-test';test.setAttribute('aria-describedby',purpose.id);
   const status=add('p','Finding available versions...');status.id='loader-status';status.setAttribute('role','status');status.setAttribute('aria-atomic','true');
@@ -43,13 +45,18 @@
   add('p','Reports are public and may require a GitHub account. Never include reward codes, card numbers, PINs, email addresses or screenshots with personal information.','meta',help);
   const report=add('a','Report a problem','report',help);
   report.href='https://github.com/dotsthewarlock/rewards/issues/new';report.target='_blank';report.rel='noopener noreferrer';report.referrerPolicy='no-referrer';
-  for(const button of [stable,dev,test,retry,cancel])button.type='button';
+  for(const button of [stable,dev,legacy,test,retry,cancel])button.type='button';
   const previous=document.activeElement;
   let manifest=null, current=null, closed=false, complete;
   const done=new Promise(resolve=>{complete=resolve;});
   const valid=c=>c && typeof c.path==='string' && typeof c.sha256==='string' && /^[a-f0-9]{64}$/.test(c.sha256);
   const candidate=(c,grade)=>valid(c)&&typeof c.version==='string'&&new RegExp('^\\d+\\.\\d+\\.\\d+-'+grade+'-[a-f0-9]{12}$').test(c.version)&&(c.path===BASE+'releases/'+c.version+'.js'||c.path===BASE+'releases/'+c.version+'/rewards-companion-'+c.version+'-bookmarklet.js');
-  const stableOK=c=>valid(c)&&c.version==='15'&&c.path==='redeem/Redeem_Prepaid_Rewards_v15.js'&&c.sha256==='23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1';
+  const ORIGINAL=Object.freeze({"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}),MAINTENANCE=Object.freeze({"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"});
+  const pinned=(c,p)=>valid(c)&&Object.keys(c).length===3&&c.version===p.version&&c.path===p.path&&c.sha256===p.sha256;
+  const maintenanceOK=c=>pinned(c,MAINTENANCE);
+  const stableOK=c=>pinned(c,ORIGINAL)||maintenanceOK(c);
+  // Legacy is an explicit alternative only while the exact maintenance pin is active.
+  const entryFor=(value,grade)=>grade==='legacy'?(maintenanceOK(value?.stable)?ORIGINAL:null):value?.[grade];
   const testOK=c=>candidate(c,'test')&&c.mode==='read-only'&&typeof c.purpose==='string'&&c.purpose.trim().length>0&&c.purpose.length<=120;
   // Previous source verification is informational only; never selection or execution authority.
   const preferenceKey='rewards.companion.launcher.preference.v1';
@@ -61,11 +68,11 @@
     if(raw&&raw.length<=256){
       const p=JSON.parse(raw);
       if(p?.schema===1&&Object.keys(p).length===4&&typeof p.sha256==='string'&&/^[a-f0-9]{64}$/.test(p.sha256)&&
-         ((p.channel==='stable'&&p.version==='15')||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))previousVerified=p;
+         ((p.channel==='stable'&&['15','15.1'].includes(p.version))||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))previousVerified=p;
     }
   }catch{}
-  const recordVerification=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
-  const eligible=(value,grade)=>grade==='stable'?stableOK(value?.stable):grade==='dev'?candidate(value?.dev,'dev'):testOK(value?.test);
+  const recordVerification=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade==='legacy'?'stable':grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
+  const eligible=(value,grade)=>grade==='legacy'?maintenanceOK(value?.stable):grade==='stable'?stableOK(value?.stable):grade==='dev'?candidate(value?.dev,'dev'):testOK(value?.test);
   const get=async(path,controller)=>{
     const url=new URL(path,ROOT);
     if(url.origin!==ROOT.origin||!url.pathname.startsWith(ROOT.pathname)||url.search||url.hash)throw Error('Invalid URL');
@@ -77,14 +84,16 @@
     const blocked=!!current||!retry.hidden;
     stable.disabled=blocked||!stableOK(manifest?.stable);
     dev.disabled=blocked||!candidate(manifest?.dev,'dev');
+    legacy.hidden=legacyNote.hidden=!maintenanceOK(manifest?.stable);legacy.disabled=blocked||legacy.hidden;
     test.disabled=blocked||!testOK(manifest?.test);more.hidden=!testOK(manifest?.test);
   };
   const display=value=>{
     manifest=value;
-    stable.textContent='Open Regular · v15';
+    stable.textContent='Open Regular · v'+value.stable.version;
+    description.textContent=(maintenanceOK(value.stable)?'Within Regular, v15.1 is recommended; the original v15 remains available. ':'Regular v15 is the original production version. ')+'Regular may start or resume your rewards. Close other rewards tools first. If a claim is unfinished or uncertain, do not switch versions.';
     dev.textContent=candidate(value.dev,'dev')?'Open Preview · '+value.dev.version.replace('-dev-',' · '):'Preview unavailable';
     meta.textContent=candidate(value.dev,'dev')?'For testing only. Do not use for real claims.':'Preview is unavailable. Regular is still available.';
-    versions.textContent=['Regular (Stable): v15',candidate(value.dev,'dev')?'Preview (Dev): '+value.dev.version:'Preview: unavailable',testOK(value.test)?'Test: '+value.test.version:null].filter(Boolean).join(' · ');
+    versions.textContent=['Regular (Stable): v'+value.stable.version,maintenanceOK(value.stable)?'Original v15 legacy fallback':null,candidate(value.dev,'dev')?'Preview (Dev): '+value.dev.version:'Preview: unavailable',testOK(value.test)?'Test: '+value.test.version:null].filter(Boolean).join(' · ');
     if(testOK(value.test)){test.textContent='Test · '+value.test.version.split('-test-')[0];purpose.textContent=value.test.purpose;}
     status.textContent='Choose a version.';
     if(previousVerified){
@@ -103,7 +112,7 @@
   };
   const stop=(source=null)=>{if(closed)return;closed=true;current?.abort();complete(source);};
   const active=controller=>!closed&&current===controller&&!controller.signal.aborted&&host.isConnected;
-  const work=async (grade, label, fresh=false, selected=grade?manifest?.[grade]:null)=>{
+  const work=async (grade, label, fresh=false, selected=grade?entryFor(manifest,grade):null)=>{
     if(closed||current)return;if(busy()){stop();return;}
     const controller=new AbortController();current=controller;available();retry.hidden=true;
     diagnostic.hidden=true;diagnostic.textContent='';
@@ -117,7 +126,7 @@
         if(value?.schema!==1||!stableOK(value.stable))throw Error('Invalid release manifest');
         display(value);
         if(!grade)return;
-        const next=value[grade];
+        const next=entryFor(value,grade);
         if(!eligible(value,grade)||!same(selected,next)||selected.path!==next.path||
            (grade==='test'&&(selected.mode!==next.mode||selected.purpose!==next.purpose))){
           status.textContent='The selected version changed or is unavailable. Choose a version again. Nothing opened.';return;
@@ -125,7 +134,7 @@
         selected=next;stage='download';status.textContent='Opening '+label+'...';
       }
       if(grade){
-        if(!eligible(manifest,grade)||!same(selected,manifest[grade]))throw Error('Invalid selection');
+        if(!eligible(manifest,grade)||!same(selected,entryFor(manifest,grade)))throw Error('Invalid selection');
         const channel=selected;
         const bytes=await(await get(channel.path,controller)).arrayBuffer();
         if(!active(controller))return;
@@ -146,7 +155,7 @@
       if(current===controller){current=null;available();if(!closed){if(!retry.hidden)retry.focus();else title.focus();}}
     }
   };
-  stable.onclick=()=>work('stable','Regular');dev.onclick=()=>work('dev','Preview');test.onclick=()=>work('test','Test');cancel.onclick=()=>stop();
+  stable.onclick=()=>work('stable','Regular');dev.onclick=()=>work('dev','Preview');legacy.onclick=()=>work('legacy','original v15');test.onclick=()=>work('test','Test');cancel.onclick=()=>stop();
   dialog.addEventListener('cancel',e=>{e.preventDefault();stop();});dialog.addEventListener('close',()=>stop());
   const onHide=()=>stop();const observer=new MutationObserver(()=>{if(!host.isConnected)stop();});
   let restored=false;

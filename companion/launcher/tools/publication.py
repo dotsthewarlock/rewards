@@ -18,6 +18,8 @@ REPO = "dotsthewarlock/rewards"
 ROOT = "https://dotsthewarlock.github.io/rewards/"
 BASE = "companion/launcher/"
 STABLE = {"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":"23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"}
+MAINTENANCE = {"version":"15.1","path":"companion/launcher/releases/15.1/Redeem_Prepaid_Rewards_v15.1.js","sha256":"a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"}
+MAINTENANCE_BLOB = "6a317f92e182df7e9fbd183ef13bb0cc04362294"
 LIMIT = 20 * 1024 * 1024
 EVIDENCE_LIMIT = 16 * 1024
 BASELINE = "0033e6f0366d4850ae13d83bea8fb934ac6d99e5"
@@ -156,7 +158,12 @@ def unpack(data, commit, outer, *, verify_historical=False):
 
 def manifest(repo):
     data=load((repo/(BASE+"channels.json")).read_bytes())
-    require(data.get("schema")==1 and data.get("stable")==STABLE, "Stable freeze or schema changed")
+    require(data.get("schema")==1 and data.get("stable") in (STABLE,MAINTENANCE), "Stable pin or schema changed")
+    # An exact staged file is checked even before activation. Active maintenance
+    # requires it; neither a missing file nor different bytes can become Stable.
+    maintenance=repo/MAINTENANCE["path"]
+    if maintenance.exists() or data["stable"]==MAINTENANCE:
+        require(maintenance.is_file() and digest(maintenance.read_bytes())==MAINTENANCE["sha256"],"Maintenance source missing or changed")
     for path,expected in FROZEN.items():
         require(digest((repo/path).read_bytes())==expected, "Frozen artifact changed: "+path)
     verify_entry(data.get("dev",{}),"dev")
@@ -251,6 +258,7 @@ def activate(args):
             "Same-version publication must preserve exact source")
     for path,expected in FROZEN.items():hosted(path,expected)
     hosted(BASE+"channels.json",digest((repo/(BASE+"channels.json")).read_bytes()))
+    if current["stable"]==MAINTENANCE:hosted(MAINTENANCE["path"],MAINTENANCE["sha256"])
     previous=current["dev"]
     hosted(previous["path"],previous["sha256"])
     if previous.get("package"):hosted(previous["package"],previous["packageSha256"])
@@ -278,6 +286,7 @@ def verify(repo,wait):
     current=manifest(repo)
     paths=["index.html",BASE+"index.html",BASE+"bootstrap.txt",BASE+"loader.js",BASE+"channels.json",STABLE["path"],
            "redeem/Redeem_Prepaid_Rewards.js","redeem/Redeem_Prepaid_Rewards_loader.txt"]
+    if (repo/MAINTENANCE["path"]).is_file():paths.append(MAINTENANCE["path"])
     for name in ("dev","test"):
         c=current.get(name)
         if not c:continue
