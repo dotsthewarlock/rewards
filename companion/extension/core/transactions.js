@@ -113,7 +113,8 @@
         if(gifts.some(row=>row.key===k&&giftKey(row)!==k))return fail('reward-conflict');
         if(sameGift.length>1||sameSource.length>1||sameGift.some(row=>!validCard(row,r)||(row.key&&row.key!==k)||row.slug!==r.campaign)||sameSource.some(row=>giftKey(row)!==k))return fail('reward-conflict');
         const {hash,rows:matchedHistory}=await L.historyMatches(history,r.code);
-        if(matchedHistory.length>1||matchedHistory.some(row=>row.giftKey!==k||(row.code&&row.code!==r.code)))return fail('history-conflict');
+        if(matchedHistory.length>1||matchedHistory.some(row=>row.giftKey!==k||(row.code&&row.code!==r.code))||
+          history.some(row=>row.giftKey===k&&!matchedHistory.includes(row)))return fail('history-conflict');
         if(matches[0].state==='complete'&&(!sameGift.length||!matchedHistory.length))return fail('queue-conflict');
         if((!sameGift.length&&gifts.length>=999)||(!matchedHistory.length&&history.length>=999))return fail('capacity');
          if(!current(storage,t.campaign,raw,contextValid,t))return fail('context-changed');
