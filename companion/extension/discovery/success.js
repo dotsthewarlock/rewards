@@ -5,7 +5,7 @@
   'use strict';
   const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
   const norm=s=>typeof s==='string'?s.replace(/\s+/g,' ').trim():'';
-  const visibleText=(el,strict=false)=>{
+  const visibleText=(el,strict=false,join=' ')=>{
     if(!D.visible(el))return '';
     const walker=el.ownerDocument.createTreeWalker(el,4);
     const parts=[];
@@ -15,7 +15,7 @@
       if(D.visible(node.parentElement))parts.push(node.nodeValue);
       else if(strict)throw Error('hidden-field-text');
     }
-    return norm(parts.join(strict?'':' '));
+    return norm(parts.join(join));
   };
   const fail=reason=>({ok:false,reason});
   const aliases=Object.freeze({'BONUS CODE':'number','GIFT CARD NUMBER':'number','CARD NUMBER':'number','CODE':'number','PIN':'pin','GIFT CARD PIN':'pin','CARD PIN':'pin'});
@@ -38,7 +38,9 @@
           marker.classList.contains('title')===marker.classList.contains('text'))return fail('ambiguous-fields');
         if(marker.classList.contains('title')){
           hasTitle=true;
-          field=aliases[visibleText(marker,true).replace(/:$/,'').toUpperCase()]||null;
+          const label=visibleText(marker,true).replace(/:$/,'').trim().toUpperCase();
+          if(!label)return fail('ambiguous-fields');
+          field=Object.hasOwn(aliases,label)?aliases[label]:null;
           if(field){
             if(Object.hasOwn(fields,field))return fail('ambiguous-fields');
             fields[field]='';
@@ -47,7 +49,7 @@
           if(!hasTitle)return fail('ambiguous-fields');
           if(!field)continue;
           if(fields[field])return fail('ambiguous-fields');
-          const value=visibleText(marker,true);
+          const value=visibleText(marker,true,'');
           if(!value)return fail('incomplete-reward');
           fields[field]=value;
         }

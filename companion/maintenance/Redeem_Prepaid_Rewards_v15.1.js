@@ -593,7 +593,7 @@
       const active = QUEUE.active(slug);
       const rows = QUEUE.load(slug);
       let changed = false;
-      let keepActive = false;
+      let keepActive = active?.phase === 'submitted' || !!active?.schema;
 
       for (const row of rows) {
         if (!row) continue;
@@ -680,7 +680,7 @@
     }
     return true;
   }
-  function successText(el,strict=false) {
+  function successText(el,strict=false,join=' ') {
     if (!successVisible(el)) return '';
     const walker=el.ownerDocument.createTreeWalker(el,4),parts=[];
     let node,n=0;
@@ -689,7 +689,7 @@
       if (successVisible(node.parentElement)) parts.push(node.nodeValue);
       else if (strict) throw Error('hidden-field-text');
     }
-    return norm(parts.join(strict?'':' '));
+    return norm(parts.join(join));
   }
 
   const DOM = {
@@ -772,7 +772,9 @@
             marker.classList.contains('title')===marker.classList.contains('text'))return fail('Ambiguous credential fields');
           if(marker.classList.contains('title')){
             hasTitle=true;
-            field=aliases[successText(marker,true).replace(/:$/,'').toUpperCase()]||null;
+            const label=successText(marker,true).replace(/:$/,'').trim().toUpperCase();
+            if(!label)return fail('Ambiguous credential fields');
+            field=Object.hasOwn(aliases,label)?aliases[label]:null;
             if(field){
               if(Object.hasOwn(fields,field))return fail('Ambiguous credential fields');
               fields[field]='';
@@ -781,7 +783,7 @@
             if(!hasTitle)return fail('Ambiguous credential fields');
             if(!field)continue;
             if(fields[field])return fail('Ambiguous credential fields');
-            const value=successText(marker,true);
+            const value=successText(marker,true,'');
             if(!value)return fail('Incomplete reward');
             fields[field]=value;
           }
@@ -1584,6 +1586,7 @@
       };
       const gifts=rows('giftcards',CFG.giftCardMax),history=rows('history',CFG.historyMax),queue=rows('queue',CFG.queueMax);
       const active=JSON.parse(raw.active||'null');
+      if (active!==null&&(!active||typeof active!=='object'||Array.isArray(active)||!['submitted','processing'].includes(active.phase))) return fail('Invalid active record');
       const targets=queue.filter(row=>row.code===code&&row.state!=='duplicate');
       if (targets.length>1) return fail('Queue conflict');
       const target=targets[0]||null;
@@ -1650,6 +1653,10 @@
     },
 
     async prepareItem() {
+      if (QUEUE.active(currentSlug)?.schema) {
+        UI.status('Unresolved Companion capture — queue halted','pending');
+        return null;
+      }
       const pending = QUEUE.unresolvedPending(currentSlug);
       if (pending) {
         // A submitted current item outranks every later queued item. If its success
@@ -1687,7 +1694,8 @@
         return QUEUE.find(currentSlug, pending.id);
       }
 
-      if (QUEUE.active(currentSlug)?.phase==='submitted') {
+      if (QUEUE.active(currentSlug)?.phase==='submitted'||QUEUE.active(currentSlug)?.schema||
+          QUEUE.load(currentSlug).some(row=>row.state==='queued'&&GIFTS.load(currentSlug).some(gift=>gift?.sourceRedemptionCode===row.code))) {
         UI.status('Unresolved capture — queue halted','pending');
         return null;
       }

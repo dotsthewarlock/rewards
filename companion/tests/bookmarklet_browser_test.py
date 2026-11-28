@@ -228,7 +228,7 @@ with sync_playwright() as p:
     print("Packaged bookmarklet queue removal: real click/keyboard, exact single/bulk, cancel, stale selection/document, linked retention, ownership, write/readback uncertainty, privacy and responsive unresolved guidance PASS",flush=True)
     page.evaluate(script)
     expect(host).to_have_count(0)
-    ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()))
+    ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture(nested=True)))
     page.goto(URL)
     page.evaluate(script)
     expect(host).to_contain_text("Unresolved reward")

@@ -52,6 +52,7 @@ def archive():
 prefix=f"rewards-companion-{version}-dev-{commit[:12]}"
 asset_names={"extension":prefix+"-extension.zip","bookmarklet":prefix+"-bookmarklet.txt","source":prefix+"-bookmarklet.js"}
 assert manifest["version_name"]==f"{version} development candidate"
+assert all(not name.startswith("maintenance/") for name in files)
 assert all(not name.startswith("sandbox/") and name not in {"prototype.html","sandbox.html","core/model.js","core/contracts.js","core/presentation.js","ui/app.js"} for name in files)
 data=archive()
 assert data==archive(),"archive not deterministic"
@@ -68,6 +69,7 @@ for name,role in (("bookmarklet.txt","bookmarklet"),("bookmarklet.js","source"))
     shutil.copyfile(build/name,out/asset_names[role])
     assert b"fixtureCode" not in (out/asset_names[role]).read_bytes()
     assert b"function makeSandbox" not in (out/asset_names[role]).read_bytes()
+    assert b"__BS_REWARDS__" not in (out/asset_names[role]).read_bytes()
 # Both distributions must carry exactly the same generated public identity.
 assert identity.encode() in (extracted/panel).read_bytes()
 assert json.dumps(identity)[1:-1].encode() in (out/asset_names["source"]).read_bytes()
