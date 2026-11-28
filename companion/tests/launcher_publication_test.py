@@ -141,6 +141,44 @@ class PublicationTests(unittest.TestCase):
             m.verify(source_repo,0)
             hosted.assert_any_call(m.MAINTENANCE["path"],m.MAINTENANCE["sha256"])
         print("v15.1 exact staged blob, pin and hosted verification PASS",flush=True)
+    def test_correction_pin_and_prior_rollback(self):
+        source_repo=Path(__file__).resolve().parents[2]
+        import hashlib
+        actual=(source_repo/m.CORRECTION["path"]).read_bytes()
+        self.assertEqual(m.digest(actual),m.CORRECTION["sha256"])
+        self.assertEqual(hashlib.sha1(b"blob "+str(len(actual)).encode()+b"\0"+actual).hexdigest(),m.CORRECTION_BLOB)
+        current=m.load((source_repo/(m.BASE+"channels.json")).read_bytes())
+        with tempfile.TemporaryDirectory() as folder:
+            repo=Path(folder)
+            for path in m.FROZEN:
+                dest=repo/path;dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_bytes((source_repo/path).read_bytes())
+            target=repo/(m.BASE+"channels.json")
+            prior=repo/m.MAINTENANCE["path"];prior.parent.mkdir(parents=True,exist_ok=True)
+            prior_bytes=(source_repo/m.MAINTENANCE["path"]).read_bytes();prior.write_bytes(prior_bytes)
+            dest=repo/m.CORRECTION["path"];dest.parent.mkdir(parents=True,exist_ok=True)
+            def pointer(pin):target.write_bytes(m.json_bytes({**current,"stable":pin}))
+            pointer(m.MAINTENANCE);self.assertEqual(m.manifest(repo)["stable"],m.MAINTENANCE)
+            pointer(m.CORRECTION)
+            with self.assertRaises(ValueError):m.manifest(repo)
+            dest.write_bytes(actual)
+            for pin in (m.CORRECTION,m.MAINTENANCE,m.STABLE):
+                pointer(pin);self.assertEqual(m.manifest(repo)["stable"],pin)
+            for bad in ({**m.CORRECTION,"sha256":"0"*64},{**m.CORRECTION,"path":m.MAINTENANCE["path"]},{**m.CORRECTION,"version":"15.3"},{**m.CORRECTION,"extra":True}):
+                pointer(bad)
+                with self.assertRaises(ValueError):m.manifest(repo)
+            for pin in (m.CORRECTION,m.MAINTENANCE,m.STABLE):
+                pointer(pin);dest.write_bytes(actual+b" ")
+                with self.assertRaises(ValueError):m.manifest(repo)
+                dest.write_bytes(actual);prior.unlink()
+                with self.assertRaises(ValueError):m.manifest(repo)
+                prior.write_bytes(prior_bytes+b" ")
+                with self.assertRaises(ValueError):m.manifest(repo)
+                prior.write_bytes(prior_bytes)
+        with patch.object(m,"hosted") as hosted:
+            m.verify(source_repo,0)
+            for pin in (m.MAINTENANCE,m.CORRECTION):hosted.assert_any_call(pin["path"],pin["sha256"])
+        print("v15.2 exact staged blob, all pins and prior rollback integrity PASS",flush=True)
     def test_two_phase(self):
         data,run,art,_=fixture()
         old={"version":"0.6.0-dev-"+"b"*12,"path":"companion/launcher/releases/0.6.0-dev-"+"b"*12+".js","sha256":"0"*64}
@@ -202,4 +240,12 @@ class PublicationTests(unittest.TestCase):
                     m.activate(activate)
                     hosted.assert_any_call(m.MAINTENANCE["path"],m.MAINTENANCE["sha256"])
                 self.assertEqual(m.load(target.read_bytes()),{**maintenance_current,"dev":candidate})
+                staged2=repo/m.CORRECTION["path"];staged2.parent.mkdir(parents=True,exist_ok=True)
+                staged2.write_bytes((Path(__file__).resolve().parents[2]/m.CORRECTION["path"]).read_bytes())
+                for pin in (m.MAINTENANCE,m.CORRECTION,m.STABLE):
+                    before={**current,"stable":pin};target.write_bytes(m.json_bytes(before))
+                    with patch.object(m,"hosted") as hosted:
+                        m.activate(activate)
+                        for fixed in (m.MAINTENANCE,m.CORRECTION):hosted.assert_any_call(fixed["path"],fixed["sha256"])
+                    self.assertEqual(m.load(target.read_bytes()),{**before,"dev":candidate})
 if __name__=="__main__":unittest.main()
