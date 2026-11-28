@@ -18,7 +18,7 @@
     'p{margin:0 0 12px;overflow-wrap:anywhere}',
     'button{box-sizing:border-box;min-height:48px;width:100%;border-radius:24px;font:600 14px/1.4 system-ui,sans-serif;padding:10px 16px;cursor:pointer}',
     'button:focus-visible{outline:3px solid #1759a8;outline-offset:3px}',
-    '.open{background:#2459a5;color:white;border:1px solid transparent;min-height:56px;overflow-wrap:anywhere;margin:4px 0}',
+    '.open{background:#2459a5;color:white;border:1px solid transparent;min-height:64px;overflow-wrap:anywhere;margin:4px 0}',
     '.dev{background:#dce6f8;color:#233b60;border:1px solid transparent;margin-top:8px}',
     '.cancel{background:transparent;color:inherit;border:0;margin-top:8px}',
     'button:disabled{opacity:.55;cursor:default}[hidden]{display:none!important}summary{box-sizing:border-box;cursor:pointer;min-height:48px;padding:14px 0}summary:focus-visible{outline:3px solid currentColor;outline-offset:2px}',
@@ -64,7 +64,7 @@
          ((p.channel==='stable'&&p.version==='15')||(p.channel==='dev'&&typeof p.version==='string'&&/^\d+\.\d+\.\d+-dev-[a-f0-9]{12}$/.test(p.version))))previousVerified=p;
     }
   }catch{}
-  const remember=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
+  const recordVerification=(grade,c)=>{if(grade==='test')return;try{const raw=JSON.stringify(identity(grade,c));if(raw.length<=256)localStorage.setItem(preferenceKey,raw);}catch{}};
   const eligible=(value,grade)=>grade==='stable'?stableOK(value?.stable):grade==='dev'?candidate(value?.dev,'dev'):testOK(value?.test);
   const get=async(path,controller)=>{
     const url=new URL(path,ROOT);
@@ -135,7 +135,7 @@
         if(hash!==channel.sha256)throw Error('Script integrity check failed');
         if(busy()){stop();return;}
         const source=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
-        remember(grade,channel);
+        recordVerification(grade,channel);
         stop(source);
       }
     }catch(error){

@@ -161,6 +161,7 @@ with sync_playwright() as p:
         assert dialog.bounding_box()["width"]<=width
         assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
         assert button("Open Regular · v15").bounding_box()["height"]>=48
+        assert button("Open Preview · 0.6.0 · 0123456789ab").bounding_box()["height"]==button("Open Regular · v15").bounding_box()["height"]
         assert button("Cancel").bounding_box()["height"]>=48
         page.get_by_text("Help & version details",exact=True).click()
         assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth")
@@ -168,7 +169,10 @@ with sync_playwright() as p:
         page.keyboard.press("Escape");gone()
     page.set_viewport_size({"width":320,"height":480})
     page.emulate_media(forced_colors="active");setup();ready()
+    page.keyboard.press("Tab");assert button("Open Regular · v15").evaluate("(e)=>e.getRootNode().activeElement===e")
     assert button("Open Regular · v15").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
+    page.keyboard.press("Tab");assert button("Open Preview · 0.6.0 · 0123456789ab").evaluate("(e)=>e.getRootNode().activeElement===e")
+    assert button("Open Preview · 0.6.0 · 0123456789ab").evaluate("(e)=>getComputedStyle(e).outlineStyle")=="solid"
     page.keyboard.press("Escape");gone()
     page.emulate_media(forced_colors="none")
     key="rewards.companion.launcher.preference.v1"
