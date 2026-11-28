@@ -78,7 +78,7 @@ def exercise_legacy_maintenance(playwright):
 <script>
 window.merchantActions=0;
 const form=document.querySelector('form');
-for(const name of ['click','input','change','keydown','submit']) form.addEventListener(name,e=>{window.merchantActions++;e.preventDefault();});
+for(const name of ['click','input','change','keydown','submit']) form.addEventListener(name,e=>{{window.merchantActions++;e.preventDefault();}});
 </script></body></html>"""
         def route_fixture(route):
             bodies={URL:success_fixture(),entry_url:entry,retained_url:success_fixture(nested=True,seed=False)}
