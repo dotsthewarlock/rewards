@@ -247,12 +247,16 @@ with sync_playwright() as p:
     address=root+base
     document=(project/"launcher/index.html").read_text()
     selection=published
+    evidence=json.loads((project.parent/Path(published['dev']['package']).parent/'publication.json').read_text())
+    good_evidence=evidence
     available=True
+    evidence_available=True
     requests=[]
     def distribution_route(route):
         url=route.request.url;requests.append(url)
         if url==address:route.fulfill(content_type="text/html",body=document)
         elif url==address+"channels.json" and available:route.fulfill(content_type="application/json",body=json.dumps(selection))
+        elif url==root+str(Path(published["dev"]["package"]).parent)+"/publication.json" and evidence_available:route.fulfill(content_type="application/json",body=json.dumps(evidence))
         else:route.abort()
     distribution.route("**/*",distribution_route)
     def open_distribution():
@@ -266,12 +270,16 @@ with sync_playwright() as p:
     assert download.bounding_box()["height"]>=48
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
     distribution.get_by_text("About & version details",exact=True).click()
-    assert distribution.get_by_text("Preview: "+published["dev"]["version"],exact=True).is_visible()
+    assert distribution.get_by_text("Preview: "+published["dev"]["version"]+" · Full source ID: "+evidence["commit"],exact=True).is_visible()
     assert distribution.get_by_text("Package SHA-256: "+published["dev"]["packageSha256"],exact=True).is_visible()
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
-    assert set(requests)<={address,address+"channels.json",address+"favicon.ico","https://dotsthewarlock.github.io/favicon.ico"}
+    assert set(requests)<={address,address+"channels.json",root+str(Path(published["dev"]["package"]).parent)+"/publication.json",address+"favicon.ico","https://dotsthewarlock.github.io/favicon.ico"}
     selection={**published,"dev":{**published["dev"],"package":"https://other.invalid/download.zip"}}
     open_distribution();assert not download.is_visible();assert download.count()==0
+    flat={**published["dev"],"path":base+"releases/"+published["dev"]["version"]+".js"}
+    selection={**published,"dev":flat};evidence={**good_evidence,"candidate":flat}
+    open_distribution();assert not download.is_visible()
+    evidence=good_evidence
     selection={"schema":1,"stable":published["stable"]}
     open_distribution();assert distribution.get_by_text("Preview is unavailable.",exact=True).is_visible()
     selection={**published,"schema":2}
@@ -282,6 +290,67 @@ with sync_playwright() as p:
     available=True
     distribution.get_by_role("button",name="Try again").click()
     download.wait_for();assert download.get_attribute("href")==root+published["dev"]["package"]
+    print("D3 comparison: exact, same-semver, different channel, unavailable, privacy and provenance",flush=True)
+    distribution.get_by_text("Check your version",exact=True).click()
+    distribution.get_by_label("Version you are using").select_option("dev")
+    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    distribution.get_by_label("Version number").fill(published["dev"]["version"].split("-dev-")[0])
+    distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"])
+    request_count=len(requests)
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
+    distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"][:12]+("a" if good_evidence["commit"][12:]!="a"*28 else "b")*28)
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert "does not establish which build is newer" in distribution.locator("#comparison-result").inner_text()
+    distribution.get_by_label("Full source ID from version details").fill("bad")
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert "Exact comparison unavailable" in distribution.locator("#comparison-result").inner_text()
+    distribution.get_by_label("Compare with").select_option("stable")
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert "Regular is not available" in distribution.locator("#comparison-result").inner_text()
+    distribution.get_by_label("How do you open Rewards Companion?").select_option("bookmarklet")
+    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    distribution.get_by_label("Version you are using").select_option("stable")
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert "matches the published Regular" in distribution.locator("#comparison-result").inner_text()
+    distribution.get_by_label("Compare with").select_option("dev")
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert "different release" in distribution.locator("#comparison-result").inner_text()
+    assert len(requests)==request_count
+    preferences=distribution.evaluate("JSON.parse(localStorage.getItem('rewards.companion.distribution.preferences.v1'))")
+    assert preferences=={"extension":"stable","bookmarklet":"dev"}
+    assert distribution.evaluate("localStorage.length")==1
+    open_distribution();distribution.get_by_text("Check your version",exact=True).click()
+    assert distribution.get_by_label("Compare with").input_value()=="stable"
+    distribution.get_by_label("How do you open Rewards Companion?").select_option("bookmarklet")
+    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    for invalid in ({**good_evidence,"commit":"a"*40},{**good_evidence,"run":True},
+                    {**good_evidence,"candidate":{**good_evidence["candidate"],"packageSha256":"0"*64}},
+                    {**good_evidence,"previousDev":{**good_evidence["previousDev"],"path":"https://other.invalid/x"}}):
+        evidence=invalid;open_distribution();assert not download.is_visible()
+        assert distribution.get_by_role("button",name="Try again").is_visible()
+        distribution.get_by_text("Check your version",exact=True).click()
+        distribution.get_by_label("Version you are using").select_option("dev")
+        distribution.get_by_label("Compare with").select_option("dev")
+        distribution.get_by_role("button",name="Compare versions").click()
+        assert "could not be checked" in distribution.locator("#comparison-result").inner_text()
+    evidence=good_evidence;evidence_available=False
+    open_distribution();assert not download.is_visible()
+    evidence_available=True;distribution.get_by_role("button",name="Try again").click();download.wait_for()
+    assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    # Blocked page storage is optional; session comparison still works.
+    distribution.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}})")
+    open_distribution();download.wait_for()
+    distribution.get_by_text("Check your version",exact=True).click()
+    distribution.get_by_label("Version you are using").select_option("dev")
+    assert distribution.get_by_label("Compare with").input_value()=="dev"
+    distribution.get_by_label("Compare with").select_option("stable")
+    distribution.get_by_label("Compare with").select_option("dev")
+    distribution.get_by_label("Version number").fill(published["dev"]["version"].split("-dev-")[0])
+    distribution.get_by_label("Full source ID from version details").fill(good_evidence["commit"])
+    distribution.get_by_role("button",name="Compare versions").click()
+    assert distribution.locator("#comparison-result").inner_text()=="Your exact Preview build matches the published Preview."
+    print("D3 exact build comparison and provenance scenarios PASS",flush=True)
     distribution.emulate_media(color_scheme="dark",forced_colors="active")
     assert distribution.evaluate("document.documentElement.scrollWidth<=innerWidth")
     distribution.close()

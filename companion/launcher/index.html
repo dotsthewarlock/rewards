@@ -12,6 +12,7 @@
 main{max-width:680px;margin:auto;padding:24px 16px}h1{font-size:28px;line-height:1.2;margin:0 0 8px}h2{font-size:21px;margin:0 0 8px}p{margin:0 0 12px;overflow-wrap:anywhere}
 section{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin:16px 0}a{color:var(--accent);overflow-wrap:anywhere}
 .action,button{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border-radius:24px;background:var(--accent);color:var(--on);border:1px solid transparent;text-decoration:none;font:600 16px/1.4 system-ui,sans-serif;text-align:center;cursor:pointer;width:100%}
+label{display:block;font-weight:600;margin-top:12px}select,input{display:block;width:100%;min-height:48px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.compare-action{margin-top:16px}
 summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}small,.note{color:var(--muted);font-size:14px}ol{padding-left:24px}li{margin-bottom:8px}code{overflow-wrap:anywhere}[hidden]{display:none!important}
 @media(forced-colors:active){.action,button{border:1px solid ButtonText}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid Highlight}}
 </style>
@@ -48,9 +49,25 @@ summary{cursor:pointer;min-height:48px;padding:12px 0;font-weight:600}a:focus-vi
 </section>
 <section aria-labelledby="help-title">
 <h2 id="help-title">Updates and help</h2>
-<details><summary>Update Rewards Companion</summary><p>The saved bookmark checks available versions each time. You choose when to open a version; use Change version to switch. You do not need to replace the bookmark. For the extension, compare the version in Chrome's Extensions page with the version shown here. Before updating, stop and disable the candidate, make a private backup and keep its previous verified package. Follow the new package's installation instructions. Keep the same unpacked extension folder and reload it in Chrome; do not remove the extension or clear site data just to update.</p><p>Do not switch with an unfinished or uncertain claim.</p></details>
+<details id="comparison"><summary>Check your version</summary>
+<p>Open Settings → About Rewards Companion to find your version and full source ID. Older packages may show this in their included <code>build.json</code> file. If you cannot find the exact details, leave them unknown.</p>
+<label for="distribution">How do you open Rewards Companion?</label>
+<select id="distribution"><option value="extension">Chrome extension</option><option value="bookmarklet">Browser bookmark</option></select>
+<label for="running">Version you are using</label>
+<select id="running"><option value="unknown">Not sure</option><option value="stable">Regular v15 (original bookmark)</option><option value="dev">Preview</option></select>
+<div id="running-details" hidden>
+<label for="running-version">Version number</label><input id="running-version" type="text" maxlength="32" placeholder="0.6.0" autocomplete="off" spellcheck="false">
+<label for="running-commit">Full source ID from version details</label><input id="running-commit" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+</div>
+<label for="preferred">Compare with</label>
+<select id="preferred"><option value="stable">Regular (recommended)</option><option value="dev">Preview (testing only)</option></select>
+<p id="preference-note" class="note">Default: Regular. Your explicit choice can be remembered on this page.</p>
+<button id="compare" type="button" class="compare-action">Compare versions</button>
+<p id="comparison-result" role="status" aria-atomic="true">Enter your exact version to compare. This page cannot detect your installed version.</p>
+</details>
+<details><summary>Update Rewards Companion</summary><p>The saved bookmark checks available versions each time. You choose when to open a version; use Change version to switch. You do not need to replace the bookmark. For the extension, use Check your version above. The version number alone does not identify the exact build. Before updating, stop and disable the candidate, make a private backup and keep its previous verified package. Follow the new package's installation instructions. Keep the same unpacked extension folder and reload it in Chrome; do not remove the extension or clear site data just to update.</p><p>Do not switch with an unfinished or uncertain claim.</p></details>
 <details><summary>Restore a previous version</summary><p>Stop if a claim is unfinished or uncertain. Keep the independent original v15 bookmark and previous verified extension package. Restore only a known safe version; do not run both at once. The original v15 bookmark is available separately if you need it and it is safe to switch.</p><p><a href="../../redeem/Redeem_Prepaid_Rewards_loader.txt">Original v15 bookmarklet</a></p></details>
-<details><summary>About &amp; version details</summary><p id="exact">Exact published Preview identity is unavailable.</p><p id="checksum" hidden></p><p><a id="provenance" hidden>Publication details</a></p><p>This page lists published versions, not the extension installed on your device.</p><p><a href="https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md">Testing and recovery checklist</a></p></details>
+<details><summary>About &amp; version details</summary><p id="exact">Exact published Preview identity is unavailable.</p><p id="checksum" hidden></p><p><a id="provenance" hidden>Publication details</a></p><p>This page lists published versions when checked, not the extension installed on your device. Reload to check again.</p><p><a href="https://github.com/dotsthewarlock/rewards/blob/companion-dev/companion/docs/native-acceptance.md">Testing and recovery checklist</a></p></details>
 <details><summary>Report a problem</summary><p>Reports are public and may require a GitHub account. Never include reward codes, card numbers, PINs, email addresses or screenshots with personal information.</p><p><a href="https://github.com/dotsthewarlock/rewards/issues/new" rel="noreferrer">Open the public support form</a></p></details>
 </section>
 <noscript><p>Version lookup requires JavaScript. No Preview package link is available until the published version can be checked.</p></noscript>
@@ -66,34 +83,99 @@ const preview=c=>{
   const folder=base+'releases/'+c.version+'/';
   return c.path===folder+'rewards-companion-'+c.version+'-bookmarklet.js'||c.path===base+'releases/'+c.version+'.js';
 };
-const packageOK=c=>preview(c)&&c.package===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-development.zip'&&sha(c.packageSha256);
-let loading=false;
+const packageOK=c=>preview(c)&&c.path===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-bookmarklet.js'&&
+  c.package===base+'releases/'+c.version+'/rewards-companion-'+c.version+'-development.zip'&&sha(c.packageSha256);
+const exactKeys=(value,keys)=>value&&typeof value==='object'&&Object.keys(value).length===keys.length&&keys.every(k=>Object.hasOwn(value,k));
+const commitOK=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
+const positive=value=>Number.isSafeInteger(value)&&value>0;
+const evidenceOK=(e,c)=>exactKeys(e,['schema','commit','run','artifact','checkpoint','candidate','previousDev'])&&e.schema===1&&
+  commitOK(e.commit)&&c.version.endsWith('-'+e.commit.slice(0,12))&&positive(e.run)&&positive(e.artifact)&&
+  typeof e.checkpoint==='string'&&e.checkpoint.trim().length>0&&e.checkpoint.length<=500&&
+  exactKeys(e.candidate,['version','path','sha256','package','packageSha256'])&&
+  exactKeys(c,['version','path','sha256','package','packageSha256'])&&Object.keys(e.candidate).every(k=>e.candidate[k]===c[k])&&
+  preview(e.previousDev)&&(!Object.hasOwn(e.previousDev,'package')&&!Object.hasOwn(e.previousDev,'packageSha256')||packageOK(e.previousDev));
+async function getJSON(url){
+  const response=await fetch(url,{cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(10000)});
+  if(!response.ok||!response.body)throw Error('Unavailable');
+  const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});
+  let count=0,text='';
+  try{
+    for(;;){const {value,done}=await reader.read();if(done)break;count+=value.byteLength;if(count>16384)throw Error('Version details too large');text+=decoder.decode(value,{stream:true});}
+    return JSON.parse(text+decoder.decode());
+  }finally{await reader.cancel().catch(()=>{});}
+}
+const prefKey='rewards.companion.distribution.preferences.v1';
+const choices={extension:null,bookmarklet:null};
+try{
+  const raw=localStorage.getItem(prefKey);
+  if(raw&&raw.length<=128){
+    const saved=JSON.parse(raw);
+    if(exactKeys(saved,['extension','bookmarklet']))for(const key of Object.keys(choices))if(['stable','dev'].includes(saved[key]))choices[key]=saved[key];
+  }
+}catch{}
+let loading=false,verified=null,regularAvailable=false;
+const unknown='Exact comparison unavailable. Check your version details; no update has been selected.';
+function resetComparison(){ $('comparison-result').textContent=unknown; }
+function updatePreference(){
+  const running=$('running').value,distribution=$('distribution').value,remembered=choices[distribution];
+  const validRunning=running==='dev'||running==='stable'&&distribution==='bookmarklet';
+  $('running-details').hidden=running!=='dev';
+  $('preferred').value=remembered||(validRunning?running:'stable');
+  $('preference-note').textContent=remembered?'Your saved choice for this type of Companion.':validRunning?'Default: the version you are using.':'Default: Regular.';
+  resetComparison();
+}
+$('distribution').addEventListener('change',updatePreference);
+$('running').addEventListener('change',updatePreference);
+$('preferred').addEventListener('change',()=>{
+  choices[$('distribution').value]=$('preferred').value;
+  try{localStorage.setItem(prefKey,JSON.stringify(choices));}catch{}
+  $('preference-note').textContent='Your choice for this type of Companion.';
+  resetComparison();
+});
+for(const id of ['running-version','running-commit'])$(id).addEventListener('input',resetComparison);
+$('compare').addEventListener('click',()=>{
+  const running=$('running').value,distribution=$('distribution').value,preferred=$('preferred').value;
+  let result=unknown;
+  if(preferred==='stable'&&distribution==='extension')result='Regular is not available for the Chrome extension. Choose Preview explicitly to compare.';
+  else if(preferred==='stable'&&!regularAvailable||preferred==='dev'&&!verified)result='The selected version could not be checked. Your current version has not changed.';
+  else if(running==='stable'&&distribution==='bookmarklet')result=preferred==='stable'?'The Regular v15 you selected matches the published Regular version.':'The published Preview is a different release. Switching is your choice; do not switch during an unfinished claim.';
+  else if(running==='dev'&&/^\d+\.\d+\.\d+$/.test($('running-version').value.trim())&&commitOK($('running-commit').value.trim())){
+    if(preferred==='stable')result='Regular v15 is a different release. Switching is your choice; do not switch during an unfinished claim.';
+    else if($('running-version').value.trim()===verified.version&&$('running-commit').value.trim()===verified.commit)result='Your exact Preview build matches the published Preview.';
+    else result='A different Preview build is published. This does not establish which build is newer. Review the version details before changing.';
+  }
+  $('comparison-result').textContent=result;
+});
+updatePreference();
 async function refresh(){
-  if(loading)return;loading=true;$('retry').hidden=true;
+  if(loading)return;loading=true;verified=null;regularAvailable=false;resetComparison();$('retry').hidden=true;
   for(const id of ['package','provenance']){$(id).hidden=true;$(id).removeAttribute('href');}
   $('checksum').hidden=true;$('exact').textContent='Exact published Preview identity is unavailable.';
   $('regular').textContent='Checking the regular version…';$('preview').textContent='Checking available Preview…';
   $('status').textContent='Checking available versions…';
   try{
-    const response=await fetch('channels.json',{cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(10000)});
-    if(!response.ok)throw Error('Unavailable');
-    const data=await response.json();
+    const data=await getJSON('channels.json');
     if(data?.schema!==1||!stable(data.stable))throw Error('Invalid release details');
-    $('regular').textContent='Regular (Stable) · version '+data.stable.version;
+    regularAvailable=true;$('regular').textContent='Regular (Stable) · version '+data.stable.version;
     if(preview(data.dev)){
       const c=data.dev;
-      $('preview').textContent='Preview · version '+c.version.split('-dev-')[0]+(packageOK(c)?'':' — extension download unavailable.');
-      $('exact').textContent='Preview: '+c.version;
       if(packageOK(c)){
+        const url=new URL(base+'releases/'+c.version+'/publication.json',root).href;
+        const evidence=await getJSON(url);
+        if(!evidenceOK(evidence,c))throw Error('Release details do not match');
+        verified={version:c.version.split('-dev-')[0],commit:evidence.commit};
+        $('preview').textContent='Preview · version '+verified.version;
+        $('exact').textContent='Preview: '+c.version+' · Full source ID: '+evidence.commit;
         $('package').href=new URL(c.package,root).href;$('package').hidden=false;
         $('checksum').textContent='Package SHA-256: '+c.packageSha256;$('checksum').hidden=false;
-        $('provenance').href=new URL(base+'releases/'+c.version+'/publication.json',root).href;$('provenance').hidden=false;
-      }
+        $('provenance').href=url;$('provenance').hidden=false;
+      }else $('preview').textContent='Preview release details or extension download unavailable.';
     }else $('preview').textContent='Preview is unavailable.';
     $('status').textContent='Available versions checked.';
   }catch{
     $('status').textContent='Could not check available versions. Try again. No Preview package is offered until the check succeeds.';
-    $('regular').textContent='Regular version could not be checked.';$('preview').textContent='Preview availability could not be checked.';$('retry').hidden=false;$('retry').focus();
+    verified=null;
+    if(!regularAvailable)$('regular').textContent='Regular version could not be checked.';$('preview').textContent='Preview availability could not be checked.';$('retry').hidden=false;$('retry').focus();
   }finally{loading=false;}
 }
 $('retry').addEventListener('click',refresh);void refresh();

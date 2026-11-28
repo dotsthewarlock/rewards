@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import io
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
@@ -20,6 +21,9 @@ STABLE = {"version":"15","path":"redeem/Redeem_Prepaid_Rewards_v15.js","sha256":
 LIMIT = 20 * 1024 * 1024
 EVIDENCE_LIMIT = 16 * 1024
 BASELINE = "0033e6f0366d4850ae13d83bea8fb934ac6d99e5"
+# Historical verification only: this exact already-published archive predates embedded identity.
+HISTORICAL = ("de3cb5d394100851e2a4005dc9c1e0420311cc60",
+              "0d698b40f7b32f26261865243d4bdb68ab70b6214a33f17dddfd87eeda3badec")
 FROZEN = {BASE+"bootstrap.txt":"c4e0820eef012ee59d857926139c5ca5db65a9204821fb58a897f64c9d3ebd2c",
           STABLE["path"]:STABLE["sha256"],"redeem/Redeem_Prepaid_Rewards.js":STABLE["sha256"],
           "redeem/Redeem_Prepaid_Rewards_loader.txt":"55f463bc77c8dbb8b8a2b590fee814c7a05160f2ac0e983848be7ee752e82bb4"}
@@ -62,8 +66,44 @@ def check_run(run, artifact, commit, run_id):
             re.fullmatch(r"sha256:[a-f0-9]{64}",artifact.get("digest","")) and
             0<artifact.get("size_in_bytes",0)<=LIMIT, "Exact non-expired artifact required")
 
-def unpack(data, commit, outer):
+class PanelIdentity(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.headers=[]
+        self.first_tag=None
+        self.in_body=False
+        self.body_first=None
+    def handle_starttag(self, tag, attrs):
+        if self.first_tag is None:self.first_tag=tag
+        if tag=="body":self.in_body=True
+        elif self.in_body and self.body_first is None:self.body_first=tag
+        if tag=="header":
+            self.headers.append(attrs)
+
+def verify_panel_identity(markup, version, commit):
+    parser=PanelIdentity()
+    parser.feed(markup)
+    parser.close()
+    require(len(parser.headers)==1 and (parser.body_first=="header" if parser.in_body else parser.first_tag=="header"),"Expected one leading workspace header")
+    attrs=parser.headers[0]
+    for name,value in (("data-build-version",version),("data-build-commit",commit)):
+        require([v for k,v in attrs if k==name]==[value],"Embedded workspace identity mismatch: "+name)
+
+def verify_bookmarklet_identity(source, version, commit):
+    # The accepted builder emits a final launchBookmarklet(JSON markup,JSON CSS) call.
+    # Decode the actual passed markup, not an incidental marker/comment in the bundle.
+    _,sep,tail=source.decode("utf-8").rpartition("\nlaunchBookmarklet(")
+    require(bool(sep),"Missing generated bookmarklet workspace")
+    decoder=json.JSONDecoder()
+    markup,end=decoder.raw_decode(tail)
+    require(isinstance(markup,str) and tail[end:end+1]==",","Invalid bookmarklet workspace markup")
+    css,finish=decoder.raw_decode(tail,end+1)
+    require(isinstance(css,str) and tail[finish:]==");\n})();","Invalid generated bookmarklet tail")
+    verify_panel_identity(markup,version,commit)
+
+def unpack(data, commit, outer, *, verify_historical=False):
     require(0<len(data)<=LIMIT and digest(data)==outer, "Artifact digest mismatch")
+    historical=verify_historical and (commit,outer)==HISTORICAL
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         infos=z.infolist()
         names=[i.filename for i in infos]
@@ -102,10 +142,13 @@ def unpack(data, commit, outer):
                      "ui/views/workspace-queue.js","ui/views/workspace-rewards.js","ui/views/workspace-campaigns.js",
                      "ui/views/workspace-settings.js","ui/live.js","ui/tokens.css","ui/components.css"}
             require(set(enames)==runtime and ext.testzip() is None, "Unexpected extension runtime members")
+            if not historical:
+                verify_panel_identity(ext.read(manifest["side_panel"]["default_path"]).decode("utf-8"),build["version"],commit)
         source=z.read(assets["source"])
         url=z.read(assets["bookmarklet"])
         require(url.startswith(b"javascript:") and url.endswith(b"\n") and
                 unquote_to_bytes(url[11:-1].decode("ascii"))==source, "Bookmarklet URL/source mismatch")
+        if not historical:verify_bookmarklet_identity(source,build["version"],commit)
     folder=BASE+"releases/"+version+"/"
     candidate={"version":version,"path":folder+assets["source"],"sha256":digest(source),
                "package":folder+prefix+"-development.zip","packageSha256":outer}
@@ -187,6 +230,7 @@ def read_evidence(record):
     c=evidence["candidate"]
     verify_entry(c,"dev");verify_entry(evidence["previousDev"],"dev")
     require(set(c)=={"version","path","sha256","package","packageSha256"} and
+            c["path"]==BASE+"releases/"+c["version"]+"/rewards-companion-"+c["version"]+"-bookmarklet.js" and
             record.parent.name==c["version"] and c["version"].endswith("-"+evidence["commit"][:12]),"Invalid publication evidence binding")
     return evidence
 
@@ -250,7 +294,7 @@ def verify(repo,wait):
     # Also verify staged immutable assets before their pointer is active.
     for record in sorted((repo/(BASE+"releases")).glob("*/publication.json")):
         evidence=read_evidence(record);c=evidence["candidate"]
-        expected,source=unpack((repo/c["package"]).read_bytes(),evidence["commit"],c["packageSha256"])
+        expected,source=unpack((repo/c["package"]).read_bytes(),evidence["commit"],c["packageSha256"],verify_historical=True)
         require(expected==c and (repo/c["path"]).read_bytes()==source,"Prepared immutable artifact mismatch")
         paths.extend([c["path"],c["package"],str(record.relative_to(repo))])
         previous=evidence["previousDev"];verify_entry(previous,"dev")
