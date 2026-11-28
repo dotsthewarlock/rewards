@@ -69,7 +69,12 @@ function launchBookmarklet(markup,css){
      const now=inspect().target;
      return host.isConnected&&now?.origin===c.origin&&now?.campaign===c.campaign&&now?.documentToken===c.documentToken?result:{ok:false,reason:'context-changed'};
    }
-   if(op==='exportDiagnostics'&&current.target)return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'bookmarklet',scope:'current-document',evidence:'structural-only',exportedAt:new Date().toISOString()},records:[{at:new Date().toISOString(),report:current.report}]}};
+   if(op==='exportDiagnostics'){
+     if(!current.target)return {ok:false,reason:'diagnostics-disabled-or-unrecognized'};
+     const at=new Date().toISOString();
+     return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'bookmarklet',scope:'current-document',evidence:'structural-only',exportedAt:at,
+       exporter:{distribution:'bookmarklet',version:null,commit:null},captureBuild:'current-exporter',snapshotTime:'current-observation',coverageComplete:false},records:[{at,report:current.report}]}};
+   }
    return {ok:false,reason:'unsupported-command'};
  };
  mountWorkspace(root,request,{recording:false});

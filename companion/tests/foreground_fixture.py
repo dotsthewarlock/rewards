@@ -57,6 +57,30 @@ document.querySelector('#start').addEventListener('click',()=>advance(welcome,ba
 document.querySelector('#next').addEventListener('click',()=>{finalStep.prepend(codes);advance(barcodeStep,finalStep);});
 </script></body></html>"""
 )
+# Same barcode node remains in the earlier step, as observed natively.
+# A silent property assignment is possible without any input/change event.
+HIDDEN_BARCODE_FIXTURE = WORKFLOW_FIXTURE.replace("finalStep.prepend(codes);","")
+
+def enter_hidden_barcode(page):
+    # Keyboard interaction is usable even at the narrow bookmarklet viewport.
+    page.locator("#start").press("Enter")
+    code=page.locator(".wizard-serial-number")
+    code.fill(CODE)
+    page.evaluate("window.fixtureBarcode=document.querySelector('.wizard-serial-number')")
+    return code
+
+def inactive_barcode(page):
+    page.locator("#barcode-step").evaluate("el=>el.classList.remove('step_active')")
+
+def hidden_final(page):
+    page.locator("#next").press("Enter")
+    page.locator("#workflow_data_email").fill("fixture@example.invalid")
+    page.locator("#workflow_data_email_confirmation").fill("fixture@example.invalid")
+    page.locator("#workflow_data_terms_of_service").press("Space")
+    assert page.locator("#workflow_data_terms_of_service").is_checked()
+    assert page.evaluate("window.fixtureBarcode===document.querySelector('.wizard-serial-number')")
+    assert page.evaluate("window.submits===0 && JSON.stringify(Object.entries(localStorage).sort())===window.before")
+
 # Fixture-only explicit user controls, not a production message/API.
 BIND = """()=>{
  const target={origin:location.origin,campaign:'CA1126VANW',documentToken:crypto.randomUUID()};

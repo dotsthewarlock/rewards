@@ -9,7 +9,7 @@ function finalReviewView(reviewed,editing){
 export function workspaceQueueView({state,cp,draft='',preview=null,page=0,editing=false,reviewed=null,removal=null}){
  const r=state?.report,summary=state?.summary,details=state?.details;
  let body='';
-   body='<h2>Queue</h2><p>Legacy cache management and reviewed foreground claims. Development candidate; live compatibility unverified.</p>';
+   body='<h2>Queue</h2><p>Legacy cache management and reviewed foreground claims. Development candidate; live compatibility unverified.</p><p>Need evidence of a stopped or changed merchant step? '+button('Diagnostics & capture','navigate',{extra:'data-value="settings"'})+'</p>';
    if(summary?.ok)body+='<section class="surface"><p>'+summary.queue.queued+' ready · '+summary.queue.complete+' complete · '+summary.queue.pending+' pending</p><p>'+summary.queue.duplicate+' duplicates · '+summary.queue.error+' errors</p><p>Email '+(summary.emailConfigured?'saved':'not configured')+'</p>'+(summary.unresolved?'<p class="warning">Existing unresolved or active state. No replay or advancement.</p>':'')+'</section>';
    else if(summary?.ok===false)body+='<p class="warning">Legacy cache could not be safely read. No data changed. Keep the original records and backups; do not reset, replay or switch versions. Inspect merchant confirmation or contact merchant support if an attempt may have occurred.</p>';
    if(summary?.ok&&state?.target){

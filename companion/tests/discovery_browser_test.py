@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from queue_removal_fixture import ROWS, FAULT, seed, snapshot as queue_snapshot, assert_removed, hold_lock, isolated_world, fault_in_world
-from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
+from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured, HIDDEN_BARCODE_FIXTURE, enter_hidden_barcode, inactive_barcode, hidden_final
 root=Path(os.environ.get("COMPANION_EXTENSION_DIR",Path(__file__).resolve().parents[1]/"extension")).resolve()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
@@ -118,6 +118,92 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             worker.evaluate("chrome.storage.local.set({diagnosticsEnabled:true})")
             assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
             print("Manual evidence capture, stale target and recording opt-in PASS",flush=True)
+            # Old snapshots without events remain valid and are not backfilled.
+            original=worker.evaluate("async()=>await diagnostics()")
+            worker.evaluate("()=>chrome.storage.local.set({structuralEvents:[]})")
+            legacy=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'exportDiagnostics'})")["export"]
+            assert legacy["records"]==original["records"] and legacy["events"]==[]
+            assert legacy["provenance"]["captureBuild"]=="unknown-or-mixed" and legacy["provenance"]["coverageComplete"] is False
+            worker.evaluate("events=>chrome.storage.local.set({structuralEvents:events})",original["events"])
+            # Actual persisted preference, exact readback, and failed preference
+            # writes through the real workspace sender. No production test hooks.
+            def preference(enabled):
+                return panel.evaluate("enabled=>chrome.runtime.sendMessage({type:'companion.workspace',op:'setDiagnostics',enabled})",enabled)
+            assert preference(False)=={"ok":True,"enabled":False,"capture":None}
+            assert worker.evaluate("async()=> (await chrome.storage.local.get('diagnosticsEnabled')).diagnosticsEnabled") is False
+            assert worker.evaluate("async()=> (await diagnostics()).records")==original["records"]
+            worker.evaluate("""()=>{const s=chrome.storage.local,old=s.set;
+              globalThis.restoreDiagnosticSet=()=>{s.set=old;delete globalThis.restoreDiagnosticSet};
+              s.set=async value=>{if(Object.hasOwn(value,'diagnosticsEnabled'))return;return old.call(s,value)};}""")
+            try:
+                assert preference(True)=={"ok":False,"reason":"diagnostics-preference-unverified"}
+                assert worker.evaluate("async()=> (await diagnostics()).enabled") is False
+            finally:
+                worker.evaluate("restoreDiagnosticSet()")
+            enabled=preference(True)
+            assert enabled=={"ok":True,"enabled":True,"capture":"recorded"},enabled
+            assert worker.evaluate("async()=> (await chrome.storage.local.get('diagnosticsEnabled')).diagnosticsEnabled") is True
+            saved=worker.evaluate("async()=>await diagnostics()")
+            for mode in ("throw","readback"):
+                worker.evaluate("""mode=>{const s=chrome.storage.local,old=s.set;
+                  globalThis.restoreDiagnosticSet=()=>{s.set=old;delete globalThis.restoreDiagnosticSet};
+                  s.set=async value=>{if(Object.hasOwn(value,'structuralRecords')){if(mode==='throw')throw Error('synthetic storage failure');return;}return old.call(s,value)};}""",mode)
+                try:
+                    failed=panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",connected["target"])
+                    assert failed=={"ok":False,"reason":"diagnostics-write-unverified"},failed
+                    assert worker.evaluate("async()=>await diagnostics()")==saved
+                finally:
+                    worker.evaluate("restoreDiagnosticSet()")
+            observed=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
+            assert observed["diagnostics"]["issue"]=="diagnostics-write-unverified"
+            # User-facing export comes from the actual generated workspace marker.
+            panel.evaluate("document.querySelector('#navigation [data-value=settings]').click()")
+            panel.get_by_role("button",name="Refresh connection").evaluate("el=>el.click()")
+            expect(panel.locator("main")).to_contain_text("Recording is on.")
+            expect(panel.locator("main")).to_contain_text("Problem observed during this worker session")
+            with panel.expect_download() as dl:
+                panel.get_by_role("button",name="Export diagnostics").click()
+            packet=json.loads(Path(dl.value.path()).read_text())
+            assert packet["provenance"]["exporter"]=={"distribution":"mv3","version":"0.6.0" if os.environ.get("COMPANION_EXTENSION_DIR") and os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA") if os.environ.get("COMPANION_EXTENSION_DIR") else None}
+            assert packet["provenance"]["snapshotTime"]=="first-observed" and packet["provenance"]["eventTime"]=="observation"
+            assert packet["provenance"]["captureBuild"]=="unknown-or-mixed"
+            assert packet["records"]==saved["records"] and packet["events"]==saved["events"]
+            for secret in ("SYNTHETIC_SECRET","PRIVATE_TEST_TOKEN","SECRET@example.invalid","TEST_SECRET_CARD","QUERY_SECRET","000000000000000000000000000001"):
+                assert secret not in json.dumps(packet)
+            # Real settings toggle feedback and persisted preference on panel reload.
+            toggle=panel.get_by_label("Record page changes")
+            toggle.uncheck()
+            expect(panel.locator("#announcement")).to_contain_text("Recording off — preference saved and verified")
+            panel.reload()
+            panel.get_by_role("button",name="Settings",exact=True).click()
+            expect(panel.get_by_label("Record page changes")).not_to_be_checked()
+            worker.evaluate("""()=>{const s=chrome.storage.local,old=s.set;
+              globalThis.restoreDiagnosticSet=()=>{s.set=old;delete globalThis.restoreDiagnosticSet};
+              s.set=async value=>{if(Object.hasOwn(value,'diagnosticsEnabled'))return;return old.call(s,value)};}""")
+            try:
+                panel.get_by_label("Record page changes").click()
+                expect(panel.locator("#announcement")).to_contain_text("Recording preference could not be verified in storage")
+                expect(panel.get_by_label("Record page changes")).not_to_be_checked()
+            finally:
+                worker.evaluate("restoreDiagnosticSet()")
+            panel.get_by_label("Record page changes").check()
+            expect(panel.locator("#announcement")).to_contain_text("Recording on — preference saved and verified")
+            page.bring_to_front()
+            assert worker.evaluate("async()=> (await diagnostics()).enabled") is True
+            # Read failure is distinct from off, empty evidence or a successful capture.
+            worker.evaluate("""()=>{const s=chrome.storage.local,old=s.get;
+              globalThis.restoreDiagnosticGet=()=>{s.get=old;delete globalThis.restoreDiagnosticGet};
+              s.get=async keys=>{if(keys&&Object.hasOwn(keys,'structuralRecords'))throw Error('synthetic read failure');return old.call(s,keys)};}""")
+            try:
+                failed=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
+                assert failed["diagnostics"]["enabled"] is None and failed["diagnostics"]["count"] is None
+                assert failed["diagnostics"]["issue"]=="diagnostics-storage-unavailable"
+                assert panel.evaluate("t=>chrome.runtime.sendMessage({type:'companion.workspace',op:'captureDiagnostics',target:t})",connected["target"])=={"ok":False,"reason":"diagnostics-storage-unavailable"}
+                assert panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'exportDiagnostics'})")=={"ok":False,"reason":"diagnostics-storage-unavailable"}
+            finally:
+                worker.evaluate("restoreDiagnosticGet()")
+            assert page.evaluate("JSON.stringify(Object.entries(localStorage).sort())===window.before && window.clicks===0")
+            print("Packaged MV3 diagnostic export identity, old records, time/coverage semantics, persisted preference, storage fault/readback and UI feedback PASS",flush=True)
             # Exercise the actual index sender and trusted manual click against a
             # worker-local synthetic response, never the public network.
             worker.evaluate("""()=>{globalThis.catalogFetchCalls=0;globalThis.catalogMode='ok';
@@ -387,6 +473,30 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert_captured(page)
         print("MV3 explicit linked reconciliation, mismatch, stale target and replay rejected PASS",flush=True)
         exercise_final(page,ctx,root)
+        # Same-node visible -> inactive -> hidden transition, with silent value
+        # mutation. No predicate changes or actual submissions are allowed.
+        ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=HIDDEN_BARCODE_FIXTURE))
+        page.goto(FINAL_URL)
+        page.bring_to_front()
+        enter_hidden_barcode(page)
+        current=lambda:worker.evaluate("id=>inspectTab(id)",tab)
+        visible=current()
+        assert visible["report"]["controls"]["serial"]=={"present":1,"visible":1,"actionable":1}
+        inactive_barcode(page)
+        inactive=current()
+        assert inactive["report"]["controls"]["serial"]=={"present":1,"visible":1,"actionable":0}
+        hidden_final(page)
+        hidden=current()
+        assert hidden["report"]["controls"]["serial"]=={"present":1,"visible":0,"actionable":0}
+        assert hidden["report"]["controls"]["submit"]["actionable"]==1
+        assert not worker.evaluate("t=>prepareTab(t)",hidden["target"])["ok"]
+        page.evaluate("window.fixtureBarcode.value='987654321098765432109876543210'")
+        changed=current()
+        assert changed["report"]==hidden["report"] and changed["target"]==hidden["target"]
+        assert not worker.evaluate("t=>prepareTab(t)",changed["target"])["ok"]
+        assert CODE not in json.dumps(changed["report"]) and "987654321098765432109876543210" not in json.dumps(changed["report"])
+        assert page.evaluate("window.submits===0 && JSON.stringify(Object.entries(localStorage).sort())===window.before")
+        print("MV3 same-node hidden barcode counterexample: visible/inactive/hidden evidence, silent value change, existing final gate rejects PASS",flush=True)
         ctx.route(FINAL_URL,lambda route:route.fulfill(status=200,content_type="text/html",body=WORKFLOW_FIXTURE))
         page.goto(FINAL_URL)
         page.bring_to_front()
@@ -523,7 +633,11 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert second.evaluate("window.clicks===0")
         # Persisted diagnostic timeline and unresolved site data survive actual
         # Chromium profile close/reopen; recording off means no new events.
-        worker.evaluate("async()=>{await serial(()=>chrome.storage.local.set({diagnosticsEnabled:false}));await recordingTail;}")
+        prefs_panel=ctx.new_page()
+        prefs_panel.goto(f"chrome-extension://{ext_id}/index.html")
+        assert prefs_panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'setDiagnostics',enabled:false})")=={"ok":True,"enabled":False,"capture":None}
+        prefs_panel.close()
+        worker.evaluate("async()=>{await recordingTail;}")
         persisted=worker.evaluate("async()=>await diagnostics()")
         assert not persisted["enabled"]
         for p0 in ctx.pages:
@@ -544,4 +658,20 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert again.evaluate("window.clicks===0")
         assert worker.evaluate("async()=>await diagnostics()")==persisted
         print("Nested root replacement, same-document restoration, two-tab ownership, reload and browser restart persistence PASS",flush=True)
+        # Verify the ON preference across a full browser restart as well as OFF.
+        # No recognized merchant tab is open while enabling; no initial capture.
+        again.close()
+        prefs_panel=ctx.new_page()
+        prefs_panel.goto(f"chrome-extension://{worker.url.split('/')[2]}/index.html")
+        assert prefs_panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'setDiagnostics',enabled:true})")=={"ok":True,"enabled":True,"capture":None}
+        on_state=worker.evaluate("async()=>await diagnostics()")
+        assert on_state==dict(persisted,enabled=True)
+        for p0 in ctx.pages:
+            p0.goto("about:blank")
+            p0.close()
+        ctx.close()
+        ctx=p.chromium.launch_persistent_context(profile,channel="chromium",headless=True,args=[f"--disable-extensions-except={root}",f"--load-extension={root}"])
+        worker=ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker",timeout=15000)
+        assert worker.evaluate("async()=>await diagnostics()")==on_state
+        print("Both recording preference states survive full profile restart; earlier observations retained PASS",flush=True)
     finally:ctx.close()

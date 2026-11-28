@@ -10,7 +10,9 @@ try{Promise.resolve(chrome.storage.local.setAccessLevel?.({accessLevel:'TRUSTED_
 
 const originOf=url=>{try{return new URL(url).origin;}catch{return null;}};
 const indexURL=chrome.runtime.getURL('index.html');
-let recordingTail=Promise.resolve();
+let recordingTail=Promise.resolve(),diagnosticIssue=null;
+// Last known problem during this worker lifetime, not a complete capture audit.
+const diagnosticFailure=reason=>{diagnosticIssue=reason;return {ok:false,reason};};
 const serial=job=>{const result=recordingTail.then(job);recordingTail=result.catch(()=>{});return result;};
 // Snapshot schema remains unchanged. Timeline entries are a bounded additive local index.
 const diagnosticReasons=Object.freeze(['initial','structure-change','document-restored','recording-enabled','control-interaction','selection-change','manual-capture']);
@@ -44,15 +46,15 @@ async function diagnostics(){
   }
   const blocked=!Array.isArray(x.structuralRecords)||x.structuralRecords.length!==records.length||records.length>=500||
     !Array.isArray(x.structuralEvents)||x.structuralEvents.length!==events.length||events.length>=eventLimit;
-  return {enabled:x.diagnosticsEnabled===true,records,events,blocked};
+  return {enabled:typeof x.diagnosticsEnabled==='boolean'?x.diagnosticsEnabled:null,records,events,blocked};
 }
 async function record(report,reason='structure-change'){
   return serial(async()=>{
-    const data=await diagnostics();
-    if(!data.enabled||report.status!=='recognized')return reason==='manual-capture'?{ok:false,reason:'diagnostics-disabled-or-unrecognized'}:{ok:true};
+    let data;try{data=await diagnostics();}catch{return diagnosticFailure('diagnostics-storage-unavailable');}
+    if(!data.enabled||report.status!=='recognized')return ['manual-capture','recording-enabled'].includes(reason)?{ok:false,reason:'diagnostics-disabled-or-unrecognized'}:{ok:true};
     const clean=D.validate(report,report.origin);
     if(!clean||!diagnosticReasons.includes(reason))return {ok:false,reason:'invalid-report'};
-    if(data.blocked)return {ok:false,reason:'diagnostics-retention-blocked'};
+    if(data.blocked)return diagnosticFailure('diagnostics-retention-blocked');
     const records=[...data.records],sig=JSON.stringify(clean),at=new Date().toISOString();
     let snapshot=records.findIndex(row=>JSON.stringify(row.report)===sig);
     if(snapshot<0){snapshot=records.length;records.push({at,report:clean});}
@@ -61,9 +63,9 @@ async function record(report,reason='structure-change'){
       await chrome.storage.local.set({structuralRecords:records,structuralEvents:events});
       const readback=await chrome.storage.local.get(['structuralRecords','structuralEvents']);
       if(!sameStoredValue(readback.structuralRecords,records)||!sameStoredValue(readback.structuralEvents,events))
-        return {ok:false,reason:'diagnostics-write-unverified'};
+        return diagnosticFailure('diagnostics-write-unverified');
       return {ok:true};
-    }catch{return {ok:false,reason:'diagnostics-write-unverified'};}
+    }catch{return diagnosticFailure('diagnostics-write-unverified');}
   });
 }
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -86,12 +88,12 @@ async function inspectTab(tabId){
 }
 async function activeTab(){return (await chrome.tabs.query({active:true,currentWindow:true}))[0];}
 // Explicit manual evidence capture. It cannot grant any workflow authority.
-async function captureDiagnostics(target){
+async function captureDiagnostics(target,reason='manual-capture'){
   const tab=await activeTab();
   if(!target||tab?.id!==target.tabId||originOf(tab?.url)!==target.origin)return {ok:false,reason:'context-changed'};
   const inspection=await inspectTab(tab.id),current=await activeTab(),t=inspection.target;
   if(current?.id!==tab.id||current.url!==tab.url||!W.sameTarget(t,target))return {ok:false,reason:'context-changed'};
-  return record(inspection.report,'manual-capture');
+  return record(inspection.report,reason);
 }
 async function scopedOperation(target,type,fields,validate,write=false){
   if(!target||!Number.isInteger(target.tabId)||!D.allowedOrigin(target.origin)||D.slug(target.campaign)!==target.campaign||typeof target.documentToken!=='string')return {ok:false,reason:'invalid-target'};
@@ -165,13 +167,33 @@ async function handle(m,sender){
   }
   if(m.op==='refreshCatalog')return refreshCatalog();
   if(m.op==='inspect'){
-    const tab=await activeTab(),data=await diagnostics();
-    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:{enabled:data.enabled,count:data.records.length,eventCount:data.events.length,blocked:data.blocked}};
+    const tab=await activeTab();
+    let data;try{data=await diagnostics();}catch{diagnosticIssue='diagnostics-storage-unavailable';}
+    return {...(tab?.id!==undefined?await inspectTab(tab.id):{ok:true,report:null,summary:null}),diagnostics:data?
+      {enabled:data.enabled,count:data.records.length,eventCount:data.events.length,blocked:data.blocked,issue:diagnosticIssue}:
+      {enabled:null,count:null,eventCount:null,blocked:null,issue:diagnosticIssue}};
   }
   if(m.op==='setDiagnostics'&&typeof m.enabled==='boolean'){
-    await serial(()=>chrome.storage.local.set({diagnosticsEnabled:m.enabled}));
-    if(m.enabled){const tab=await activeTab();if(tab?.id!==undefined){const result=await inspectTab(tab.id);if(result.report?.status==='recognized')await record(result.report,'recording-enabled');}}
-    return {ok:true};
+    const saved=await serial(async()=>{
+      try{
+        await chrome.storage.local.set({diagnosticsEnabled:m.enabled});
+        const readback=await chrome.storage.local.get('diagnosticsEnabled');
+        return readback.diagnosticsEnabled===m.enabled;
+      }catch{return false;}
+    });
+    if(!saved)return {ok:false,reason:'diagnostics-preference-unverified'};
+    // Preference persistence and initial observation are separate outcomes.
+    let capture=null;
+    if(m.enabled){
+      try{
+        const tab=await activeTab(),result=tab?.id!==undefined?await inspectTab(tab.id):null;
+        if(result?.target){
+          const outcome=await captureDiagnostics(result.target,'recording-enabled');
+          capture=outcome.ok?'recorded':outcome.reason;
+        }
+      }catch{capture='operation-failed';}
+    }
+    return {ok:true,enabled:m.enabled,capture};
   }
   if(m.op==='revealReward')return revealTab(m.target,m.snapshot,m.index);
   if(m.op==='exportRewards')return exportTab(m.target);
@@ -184,8 +206,10 @@ async function handle(m,sender){
   if(m.op==='authorizeFinal')return authorizeTab(m.target,m.attemptId,m.confirmed);
   if(m.op==='captureDiagnostics')return captureDiagnostics(m.target);
   if(m.op==='exportDiagnostics'){
-    const {records,events,blocked}=await diagnostics();
-    return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'mv3',scope:'retained-structural-observations',evidence:'structural-only',version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),recordingBlocked:blocked,eventCoverage:'since-timeline-enabled'},records,events}};
+    let data;try{data=await diagnostics();}catch{return diagnosticFailure('diagnostics-storage-unavailable');}
+    const {records,events,blocked}=data;
+    return {ok:true,export:{schema:'rewards.structural-export/1',provenance:{distribution:'mv3',scope:'retained-structural-observations',evidence:'structural-only',version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),recordingBlocked:blocked,eventCoverage:'since-timeline-enabled',
+      exporter:{distribution:'mv3',version:null,commit:null},captureBuild:'unknown-or-mixed',snapshotTime:'first-observed',eventTime:'observation',coverageComplete:false,workerIssue:diagnosticIssue},records,events}};
   }
   return {ok:false,reason:'unsupported-command'};
 }
