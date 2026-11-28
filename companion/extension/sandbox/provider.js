@@ -20,14 +20,14 @@ export function makeSandbox(){
  function report(){const c=campaign();return scenario==='disconnected'?null:{status:scenario==='unknown'?'unknown':'recognized',campaign:c.id,origin:c.origin,stage:scenario==='success'?'success':'entry',controls:{submit:{actionable:scenario==='entry'?1:0,present:1,visible:1},form:{present:1,visible:1,actionable:0}}};}
  async function request(op,f={}){
   const t=target(),slug=t?.campaign;
-  if(op==='inspect')return {ok:true,target:t,report:report(),summary:t?L.summary(storage,slug):null,details:t?L.details(storage,slug):null,recovery:t&&scenario==='success'?T.pendingSelection(storage,slug):null,diagnostics:{enabled,count:events?1:0,eventCount:events,blocked:false}};
+  if(op==='inspect')return {ok:true,target:t,report:report(),summary:t?L.summary(storage,slug):null,details:t?L.details(storage,slug,t.documentToken):null,recovery:t&&scenario==='success'?T.pendingSelection(storage,slug):null,diagnostics:{enabled,count:events?1:0,eventCount:events,blocked:false}};
   if(op==='getCatalog'||op==='refreshCatalog')return {ok:true,catalog:{outcome:'never',entries:[]}};
   if(op==='setDiagnostics'){enabled=f.enabled===true;return {ok:true};}
   if(op==='exportDiagnostics')return {ok:true,export:{schema:'synthetic-only',events}};
   if(!current(f.target))return blocked('context-changed');
   if(op==='captureDiagnostics'){if(!enabled)return blocked('recording-disabled');events++;return {ok:true};}
   if(op==='previewImport')return L.previewImport(storage,slug,f.text);
-  if(op==='editCache'){review=null;return L.editCache(storage,locks,slug,f.edit,f.value,()=>current(t));}
+  if(op==='editCache'){review=null;return L.editCache(storage,locks,slug,f.edit,f.value,()=>current(t),t.documentToken);}
   if(op==='exportRewards')return L.exportRows(storage,slug);
   if(op==='revealReward')return L.revealReward(storage,slug,f.snapshot,f.index);
   if(op==='cancelFinal'){if(review?.attemptId===f.attemptId)review=null;return {ok:true};}

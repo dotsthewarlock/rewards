@@ -23,7 +23,7 @@ function launchBookmarklet(markup,css){
  const inspect=()=>{
    syncContext();const report=D.report(document),recognized=report?.status==='recognized';
    const target=recognized?{origin:report.origin,campaign:report.campaign,documentToken:epoch.token}:null;
-   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
+   return {ok:true,report,target,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign,epoch.token):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null,diagnostics:{enabled:false,count:recognized?1:0}};
  };
  const request=async(op,fields={})=>{
    if(!host.isConnected)return {ok:false,reason:'workspace-closed'};
@@ -63,7 +63,7 @@ function launchBookmarklet(markup,css){
          const now=syncContext();
          return host.isConnected&&epoch.token===c.documentToken&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===c.origin&&now.campaign===c.campaign;
        };
-       return L.editCache(localStorage,navigator.locks,c.campaign,fields.edit,fields.value,current);
+       return L.editCache(localStorage,navigator.locks,c.campaign,fields.edit,fields.value,current,c.documentToken);
      }
      const result=await L.previewImport(localStorage,c.campaign,fields.text);
      const now=inspect().target;

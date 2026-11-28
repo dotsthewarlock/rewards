@@ -13,7 +13,7 @@ const marker=root.querySelector('header[data-build-commit]');
 const version=marker?.dataset.buildVersion,commit=marker?.dataset.buildCommit;
 const build=/^\d+\.\d+\.\d+$/.test(version||'')&&/^[a-f0-9]{40}$/.test(commit||'')?
   Object.freeze({version,commit,distribution:recording?'Chrome extension':'Bookmarklet'}):null;
-let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null;
+let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null,removal=null;
 let catalog=null,catalogBusy=false,catalogError=false;
 let revealedReward=null,revealEpoch=0,revealTimer=null;
 function hideReward(){revealEpoch++;clearTimeout(revealTimer);revealTimer=null;const shown=!!revealedReward;revealedReward=null;return shown;}
@@ -25,6 +25,8 @@ const editMessage={
  'invalid-input':'Check the entered value.',
  'unreadable-cache':'Existing cache could not be safely read. No edit was attempted.',
  'cache-changed':'Cache changed during review. Refresh before editing.',
+ 'stale-selection':'Selection expired or cache changed. Refresh and review again.',
+ 'removal-not-safe':'No demonstrably unused entries in this selection. All records retained.',
  'edit-outcome-unknown':'Save outcome uncertain. Refresh and inspect the cache before retrying.'
 };
 const {sameTarget}=globalThis.RewardsWorkspaceContract;
@@ -32,6 +34,12 @@ const alive=()=>!root.host||root.host.isConnected;
 function discardReview(){
  const old=reviewed;reviewed=null;
  if(old)Promise.resolve(request('cancelFinal',{target:old.target,attemptId:old.review.attemptId})).catch(()=>{});
+}
+function cancelRemovalReview(old){
+ if(old)Promise.resolve(request('editCache',{target:old.target,edit:'cancelRemoval',value:{token:old.token}})).catch(()=>{});
+}
+function discardRemoval(){
+ const old=removal;removal=null;cancelRemovalReview(old);
 }
 async function loadCatalog(refreshPublic=false){
  if(!recording||catalogBusy)return;
@@ -57,7 +65,7 @@ function render(){
  const r=state?.report,cp=campaignById(r?.campaign);
  $('context').innerHTML='<section class="surface"><strong>'+esc(cp?.name||'No recognized campaign')+'</strong><p>'+esc(r? r.status+' · '+r.stage : state?.ok===false?'Connection unavailable':'Open a supported merchant tab')+'</p></section>';
  $('navigation').innerHTML=['queue','rewards','campaigns','settings'].map(x=>button(x[0].toUpperCase()+x.slice(1),'navigate',{extra:'data-value="'+x+'" '+(screen===x?'aria-current="page"':'')})).join('');
- const body=screen==='queue'?workspaceQueueView({state,cp,draft,preview,page,editing,reviewed}):
+ const body=screen==='queue'?workspaceQueueView({state,cp,draft,preview,page,editing,reviewed,removal}):
    screen==='rewards'?workspaceRewardsView({state,browseTab,browseSearch,rewardPage,historyPage,revealedReward}):
    screen==='campaigns'?workspaceCampaignsView({cp,recording,catalog,catalogBusy,catalogError}):
    workspaceSettingsView({state,emailDraft,editing,recording,build});
@@ -71,13 +79,13 @@ function render(){
 async function refresh(){
  if(hideReward())render();
  const n=++serial;
- try{const s=await request('inspect');if(n!==serial||!alive())return;if(reviewed&&(!sameTarget(reviewed.target,s?.target)||JSON.stringify(state?.report)!==JSON.stringify(s?.report)||JSON.stringify(state?.details)!==JSON.stringify(s?.details)||s?.summary?.unresolved))discardReview();if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;rewardPage=0;browseSearch='';inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
- catch{if(n!==serial||!alive())return;discardReview();state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
+ try{const s=await request('inspect');if(n!==serial||!alive())return;if(reviewed&&(!sameTarget(reviewed.target,s?.target)||JSON.stringify(state?.report)!==JSON.stringify(s?.report)||JSON.stringify(state?.details)!==JSON.stringify(s?.details)||s?.summary?.unresolved))discardReview();if(removal&&(!sameTarget(removal.target,s?.target)||removal.snapshot!==s?.details?.queueSnapshot||s?.summary?.unresolved))discardRemoval();if(!sameTarget(state?.target,s?.target)){draft='';emailDraft='';preview=null;page=0;historyPage=0;rewardPage=0;browseSearch='';inputVersion++;}else if(JSON.stringify(state?.details)!==JSON.stringify(s?.details))preview=null;state=s;}
+ catch{if(n!==serial||!alive())return;discardReview();discardRemoval();state={ok:false};draft='';emailDraft='';preview=null;inputVersion++;}
  render();
 }
 async function edit(op,value){
  if(editing||!state?.target||state.summary?.unresolved)return;
- discardReview();
+ discardReview();discardRemoval();
  const selected=state.target,version=inputVersion;
  editing=true;render();
  let result;
@@ -94,13 +102,44 @@ async function edit(op,value){
 }
 root.addEventListener('click',async e=>{
  const target=e.target.closest('[data-action]');if(!target||target.disabled)return;
- if(target.dataset.action==='navigate'){hideReward();discardReview();screen=target.dataset.value;render();$('workspace').focus();if(screen==='campaigns')await loadCatalog();}
+ if(target.dataset.action==='navigate'){hideReward();discardReview();discardRemoval();screen=target.dataset.value;render();$('workspace').focus();if(screen==='campaigns')await loadCatalog();}
  if(target.dataset.action==='refreshCatalog'&&e.isTrusted&&screen==='campaigns')await loadCatalog(true);
- if(target.dataset.action==='refresh'){discardReview();await refresh();}
+ if(target.dataset.action==='refresh'){discardReview();discardRemoval();await refresh();}
  if(target.dataset.action==='queuePage'){page=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='historyPage'){historyPage=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='rewardPage'){hideReward();rewardPage=Number(target.dataset.value);render();$('workspace').focus();}
  if(target.dataset.action==='browseTab'){hideReward();browseTab=target.dataset.value;browseSearch='';rewardPage=0;historyPage=0;render();}
+ if(target.dataset.action==='reviewRemoval'){
+   if(!e.isTrusted||editing||removal||reviewed||screen!=='queue'||!state?.target||state.summary?.unresolved||state.details?.queueBlock!==null)return;
+   const selected=state.target,snapshot=state.details.queueSnapshot,n=serial;
+   const index=target.dataset.value==='all'?null:Number(target.dataset.value);
+   editing=true;render();
+   let result;try{result=await request('editCache',{target:selected,edit:'previewRemoval',value:{snapshot,index}});}catch{}
+   editing=false;
+   if(!alive()||n!==serial||screen!=='queue'||!sameTarget(selected,state?.target)||snapshot!==state?.details?.queueSnapshot){
+     if(result?.ok)cancelRemovalReview({...result,target:selected});
+     if(alive())render();return;
+   }
+   if(result?.ok)removal={...result,target:selected,snapshot};
+   render();$('workspace').focus({preventScroll:true});
+   $('announcement').textContent=result?.ok?'Review the masked entries before confirming removal.':(editMessage[result?.reason]||'Removal review unavailable. Refresh and inspect the queue.');
+   return;
+ }
+ if(target.dataset.action==='cancelRemoval'){
+   if(!e.isTrusted||editing||!removal)return;
+   discardRemoval();render();$('workspace').focus({preventScroll:true});
+   $('announcement').textContent='Removal cancelled. No queue entries changed.';return;
+ }
+ if(target.dataset.action==='confirmRemoval'){
+   if(!e.isTrusted||editing||!removal||screen!=='queue'||!sameTarget(removal.target,state?.target)||removal.snapshot!==state?.details?.queueSnapshot||state.summary?.unresolved)return;
+   const selected=removal;removal=null;editing=true;render();
+   let result;try{result=await request('editCache',{target:selected.target,edit:'removeQueue',value:{token:selected.token,confirmed:true}});}catch{}
+   editing=false;if(!alive())return;
+   await refresh();if(!alive())return;
+   $('workspace').focus({preventScroll:true});
+   $('announcement').textContent=result?.ok&&result.removed===selected.rows.length?result.removed+' queue '+(result.removed===1?'entry removed.':'entries removed.'):(editMessage[result?.reason]||'Removal outcome uncertain. Refresh and inspect before another review.');
+   return;
+ }
  if(target.dataset.action==='prepareNext'){
    if(!e.isTrusted||editing||!state?.target||state.summary?.unresolved||screen!=='queue')return;
    discardReview();const selected=state.target;
@@ -250,9 +289,9 @@ root.addEventListener('input',e=>{
  const add=root.querySelector('[data-action="addQueue"]');if(add)add.disabled=editing||!!state?.summary?.unresolved||!draft.trim();
 });
 root.addEventListener('change',async e=>{if(e.target.id==='finalConfirmed'){if(reviewed&&e.isTrusted){reviewed.confirmed=e.target.checked;const submit=root.querySelector('[data-action="authorizeFinal"]');if(submit)submit.disabled=editing||!reviewed.confirmed;}return;}if(e.target.id==='clipboardPreference'){await edit('saveClipboard',e.target.checked);return;}if(e.target.id==='diagnosticsEnabled'){try{await request('setDiagnostics',{enabled:e.target.checked});}catch{}await refresh();}});
-const visibility=()=>{if(document.hidden&&hideReward()&&alive())render();};
+const visibility=()=>{if(document.hidden){const hadRemoval=!!removal;discardRemoval();if((hideReward()||hadRemoval)&&alive())render();}};
 document.addEventListener('visibilitychange',visibility);
-root.host?.addEventListener('rewards-companion-close',()=>{hideReward();document.removeEventListener('visibilitychange',visibility);},{once:true});
+root.host?.addEventListener('rewards-companion-close',()=>{hideReward();discardRemoval();document.removeEventListener('visibilitychange',visibility);},{once:true});
 render();refresh();
 return {refresh};
 }
