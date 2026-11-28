@@ -71,7 +71,7 @@ test('legacy detail packet is masked, bounded and rejects injected fields; previ
  const map=new Map([['bs_rewards:'+slug+':queue',JSON.stringify([{code:a,state:'queued',note:'SECRET'}])],['bs_rewards:'+slug+':history',JSON.stringify([{h:'SECRET_HASH',last4:'1234'}])]]);
  const store={getItem:k=>map.get(k)??null,setItem(){throw Error('unexpected write');}};
  const before=JSON.stringify([...map]),d=L.details(store,slug);
- assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}],rewards:[],rewardSnapshot:d.rewardSnapshot});
+ assert.deepEqual(d,{ok:true,queue:[{last4:'6789',state:'queued'}],history:[{last4:'1234'}],rewards:[],rewardSnapshot:d.rewardSnapshot,queueSnapshot:d.queueSnapshot,queueBlock:'ambiguous'});
  assert.ok(L.validSelection(d.rewardSnapshot,0));
  assert.deepEqual(L.validateDetails(d),d);
  assert.equal(L.validateDetails({...d,queue:[{last4:'6789',state:'queued',code:a}]}),null);
@@ -180,4 +180,82 @@ test('diagnostic vocabulary is additive and limited to fixed public wizard phras
  const labels=['Get My Bonus','Choose your bonus','Add your Code','Petro-Canada $10 eGift Card','Soumettre'];
  assert.deepEqual(D.validate({...p,labels},origin).labels,labels);
  assert.equal(D.validate({...p,labels:[...labels,'unlisted fixture text']},origin),null);
+});
+
+
+// Actual v15 new-entry shape, with synthetic exact 30-digit strings.
+const removalCode=i=>String(i).padStart(30,'0');
+const freshRow=i=>({id:'00000000-0000-0000-0000-'+String(i).padStart(12,'0'),code:removalCode(i),state:'queued',note:'',created:100,updated:100});
+function removalStore(rows=[freshRow(1),freshRow(2)],history=[],gifts=[]){
+ const s=editableStore();
+ s.map.set(L.key(slug,'queue'),JSON.stringify(rows));s.map.set(L.key(slug,'history'),JSON.stringify(history));
+ s.map.set(L.key(slug,'giftcards'),JSON.stringify(gifts));
+ return s;
+}
+const reviewRemoval=(s,index=null,scope='scope')=>L.editCache(s,testLock,slug,'previewRemoval',{snapshot:L.details(s,slug,scope).queueSnapshot,index},()=>true,scope);
+const confirmRemoval=(s,r,scope='scope',locks=testLock,valid=()=>true)=>L.editCache(s,locks,slug,'removeQueue',{token:r.token,confirmed:true},valid,scope);
+test('queue removal exact single and bulk review retains linked, duplicate, attempted and unknown-shape rows',async()=>{
+ const hash=await L.historyHash(removalCode(3));
+ const rows=[freshRow(1),freshRow(2),freshRow(3),freshRow(4),freshRow(5),{...freshRow(6),code:removalCode(5),state:'duplicate'}, {...freshRow(7),state:'error'}, {...freshRow(8),submitted:1}, {...freshRow(9),note:'Recovered before submission'}, {...freshRow(10),state:'complete'}];
+ const s=removalStore(rows,[{h:hash,last4:'0003'}],[{sourceRedemptionCode:removalCode(4),gcNumber:'PRIVATE_FIXTURE',gcPin:'0000'}]);
+ const before=JSON.stringify([...s.map]);
+ const single=await reviewRemoval(s,0);
+ assert.deepEqual(single.rows,[{index:0,last4:'0001'}]);assert.equal(single.retained,9);
+ assert.deepEqual(L.validateEdit(single,'previewRemoval'),single);assert.doesNotMatch(JSON.stringify(single),/PRIVATE_FIXTURE|000000000000000000000000000001/);
+ assert.equal(JSON.stringify([...s.map]),before);assert.equal(s.writes,0);
+ assert.deepEqual(await L.editCache(s,testLock,slug,'cancelRemoval',{token:single.token},()=>true,'scope'),{ok:true});
+ assert.equal((await confirmRemoval(s,single)).reason,'stale-selection');assert.equal(s.writes,0);
+ const bulk=await reviewRemoval(s);
+ assert.deepEqual(bulk.rows,[{index:0,last4:'0001'},{index:1,last4:'0002'}]);
+ const protectedBefore=[...s.map].filter(([k])=>k!==L.key(slug,'queue'));
+ assert.deepEqual(await confirmRemoval(s,bulk),{ok:true,removed:2});
+ assert.equal(s.writes,1);assert.deepEqual(JSON.parse(s.getItem(L.key(slug,'queue'))),rows.slice(2));
+ assert.deepEqual([...s.map].filter(([k])=>k!==L.key(slug,'queue')),protectedBefore);
+ assert.equal((await confirmRemoval(s,bulk)).reason,'stale-selection');
+});
+test('queue removal blocks unresolved, locks, ambiguous links, stale target, stale selection and ownership',async()=>{
+ for(const [name,value] of [['active','{}'],['lock','{}'],['queue',JSON.stringify([{...freshRow(1),state:'pending'}])],['queue',JSON.stringify([{...freshRow(1),state:'processing'}])],['giftcards',JSON.stringify([{gcNumber:'UNKNOWN_LINK'}])],['history',JSON.stringify([{last4:'0001'}])]]){
+  const s=removalStore();s.map.set(L.key(slug,name),value);const before=JSON.stringify([...s.map]);
+  assert.equal((await reviewRemoval(s)).ok,false);assert.equal(s.writes,0);assert.equal(JSON.stringify([...s.map]),before);
+ }
+ const s=removalStore(),old=L.details(s,slug,'scope').queueSnapshot;
+ s.map.set(L.key(slug,'queue'),JSON.stringify([freshRow(2),freshRow(1)]));
+ assert.equal((await L.editCache(s,testLock,slug,'previewRemoval',{snapshot:old,index:0},()=>true,'scope')).reason,'stale-selection');
+ const selected=await reviewRemoval(s,0);
+ assert.equal((await confirmRemoval(s,selected,'different')).reason,'stale-selection');
+ assert.equal((await confirmRemoval(s,selected,'scope',{request:async(n,o,f)=>f(null)})).reason,'edit-busy');
+ assert.equal((await confirmRemoval(s,selected)).reason,'stale-selection');
+ const stale=await reviewRemoval(s);s.map.set(L.key(slug,'history'),JSON.stringify([{code:removalCode(1)}]));
+ assert.equal((await confirmRemoval(s,stale)).reason,'stale-selection');assert.equal(s.writes,0);
+});
+test('queue removal rechecks after review and reports uncertain write/readback without retry',async()=>{
+ for(const mode of ['write','readback','context']){
+  const s=removalStore(),selected=await reviewRemoval(s,0);
+  if(mode==='write')s.setItem=()=>{throw Error('quota');};
+  if(mode==='readback')s.setItem=()=>{};
+  const before=s.getItem(L.key(slug,'queue'));
+  const result=await confirmRemoval(s,selected,'scope',testLock,()=>mode!=='context');
+  assert.equal(result.reason,mode==='context'?'context-changed':'edit-outcome-unknown');
+  assert.equal(s.getItem(L.key(slug,'queue')),before);
+  assert.equal((await confirmRemoval(s,selected)).reason,'stale-selection');
+ }
+ const s=removalStore(),selected=await reviewRemoval(s,0);
+ assert.equal((await L.editCache(s,testLock,slug,'removeQueue',{token:selected.token,confirmed:false},()=>true,'scope')).reason,'invalid-input');
+ assert.equal(s.writes,0);
+});
+
+test('removal retains modified timestamps, rejects inconsistent legacy fallback evidence and revokes corrupt reviews',async()=>{
+ const changed={...freshRow(1),updated:101};
+ const s=removalStore([changed,freshRow(2)]);
+ const r=await reviewRemoval(s);
+ assert.deepEqual(r.rows,[{index:1,last4:'0002'}]);
+ const original=s.map.get(L.key(slug,'queue'));
+ s.map.set(L.key(slug,'queue'),'broken');
+ assert.equal(L.details(s,slug,'scope').ok,false);
+ s.map.set(L.key(slug,'queue'),original);
+ assert.equal((await confirmRemoval(s,r)).reason,'stale-selection');
+ s.map.set(L.key(slug,'history'),JSON.stringify([{h:'fallback_0_'+removalCode(2)}]));
+ assert.equal(L.details(s,slug,'scope').queueBlock,'ambiguous');
+ assert.equal((await reviewRemoval(s)).reason,'removal-not-safe');
+ assert.equal(s.writes,0);
 });

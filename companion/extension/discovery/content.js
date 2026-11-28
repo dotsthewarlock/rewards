@@ -101,7 +101,7 @@
           const now=stopped?null:syncContext();
           return !stopped&&m.documentToken===epoch.token&&document.visibilityState==='visible'&&!document.getElementById('bsp')&&now?.status==='recognized'&&now.origin===m.origin&&now.campaign===m.campaign;
         };
-        L.editCache(localStorage,navigator.locks,report.campaign,m.op,m.value,current).then(reply,()=>reply({ok:false,reason:'edit-outcome-unknown'}));
+        L.editCache(localStorage,navigator.locks,report.campaign,m.op,m.value,current,m.documentToken).then(reply,()=>reply({ok:false,reason:'edit-outcome-unknown'}));
         return true;
       }
       L.previewImport(localStorage,report.campaign,m.text).then(result=>{
@@ -110,7 +110,7 @@
       },()=>reply({ok:false,reason:'import-unavailable'}));
       return true;
     }
-    reply({report,documentToken:stopped?null:epoch.token,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null});
+    reply({report,documentToken:stopped?null:epoch.token,summary:recognized?L.summary(localStorage,report.campaign):null,details:recognized?L.details(localStorage,report.campaign,epoch.token):null,recovery:recognized&&report.stage==='success'?globalThis.RewardsTransactions.pendingSelection(localStorage,report.campaign):null});
   });
   // Observe only trusted, actionable controls inside the recognized wizard.
   // Record fixed event reasons; never read entered values or arbitrary labels.

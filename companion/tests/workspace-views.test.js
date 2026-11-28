@@ -42,3 +42,15 @@ test('campaign and diagnostic views distinguish capability, restriction, stalene
 });
 
 test('ambiguous product/reward choice remains visible and cannot enter final review',()=>{const state=fixture(),multiple=campaignById('CA1126PZFT');const html=workspaceQueueView({state,cp:multiple});assert.match(html,/Multiple product or reward choices/);assert.doesNotMatch(html,/Review final claim|Prepare next redemption/);assert.match(workspaceCampaignsView({cp:campaignById('CA1126DTZFT')}),/Avondale participation inferred/);assert.match(workspaceRewardsView({state}),/Pending claims are not counted/);});
+
+test('queue removal confirmation masks the exact reviewed entries and separates cancellation from mutation',()=>{
+ const state=fixture();state.details.queueSnapshot='snapshot';state.details.queueBlock=null;
+ const ready=workspaceQueueView({state,cp});
+ assert.match(ready,/Review removal of queue entry 1 ending 0001/);assert.match(ready,/Review safe removals/);
+ const html=workspaceQueueView({state,cp,removal:{rows:[{index:0,last4:'0001'}],retained:2}});
+ assert.match(html,/Confirm queue removal/);assert.match(html,/Entry 1/);assert.match(html,/Confirm removal/);assert.match(html,/Cancel removal/);
+ assert.doesNotMatch(html,/Authorize reviewed claim|Prepare next redemption|Add to queue/);
+ state.summary.unresolved=true;state.details.queueBlock='pending';
+ const blocked=workspaceQueueView({state,cp});
+ assert.match(blocked,/Absence of confirmation does not prove failure/);assert.doesNotMatch(blocked,/Review safe removals/);
+});
