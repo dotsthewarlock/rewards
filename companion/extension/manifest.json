@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rewards Companion - development",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Passive discovery and explicit reviewed foreground workflow. Development candidate; not live accepted.",
   "permissions": [
     "sidePanel",
@@ -60,5 +60,5 @@
       "world": "ISOLATED"
     }
   ],
-  "version_name": "0.6.0 development candidate"
+  "version_name": "0.6.1 development candidate"
 }

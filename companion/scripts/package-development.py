@@ -31,6 +31,8 @@ files={"manifest.json",manifest["background"]["service_worker"],manifest["side_p
        "ui/views/workspace-queue.js","ui/views/workspace-rewards.js","ui/views/workspace-campaigns.js","ui/views/workspace-settings.js",
        "ui/live.js","ui/tokens.css","ui/components.css"}
 version=manifest["version"]
+# Manifest is authoritative; the private npm package version must agree.
+assert json.loads((base/"package.json").read_text())["version"]==version,"private npm version differs from extension manifest"
 commit=git("rev-parse","HEAD").decode().strip()
 subprocess.check_call(["git","diff","--quiet","HEAD","--"],cwd=repo)
 panel=manifest["side_panel"]["default_path"]

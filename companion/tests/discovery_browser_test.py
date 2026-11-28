@@ -1,12 +1,16 @@
 """Native isolated-world discovery against synthetic route fulfillment, never a real merchant."""
 from pathlib import Path
 import os
+import json
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
 from queue_removal_fixture import ROWS, FAULT, seed, snapshot as queue_snapshot, assert_removed, hold_lock, isolated_world, fault_in_world
 from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured, HIDDEN_BARCODE_FIXTURE, enter_hidden_barcode, inactive_barcode, hidden_final
-root=Path(os.environ.get("COMPANION_EXTENSION_DIR",Path(__file__).resolve().parents[1]/"extension")).resolve()
+source=Path(__file__).resolve().parents[1]/"extension"
+root=Path(os.environ.get("COMPANION_EXTENSION_DIR",source)).resolve()
+expected_version=json.loads((source/"manifest.json").read_text())["version"]
+assert json.loads((root/"manifest.json").read_text())["version"]==expected_version
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
 <main class="bcr-redemption"><form id="new_workflow_data">
 <div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET">
@@ -45,7 +49,6 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert page.evaluate("typeof globalThis.RewardsDiscovery")== "undefined"
         print("isolated read-only recognition, active vs inactive control and v15 cache PASS",flush=True)
         records=worker.evaluate("""async()=>{for(let i=0;i<50;i++){const data=await diagnostics();if(data.records.length)return data.records;await new Promise(r=>setTimeout(r,100));}throw Error('no persisted diagnostics')}""")
-        import json
         text=json.dumps(records)
         for secret in ("SYNTHETIC_SECRET","PRIVATE_TEST_TOKEN","SECRET@example.invalid","PIN-123","DO-NOT-STORE","TEST_SECRET_CARD","QUERY_SECRET","000000000000000000000000000001"):
             assert secret not in text
@@ -83,7 +86,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             connected=panel.evaluate("()=>chrome.runtime.sendMessage({type:'companion.workspace',op:'inspect'})")
             if os.environ.get("COMPANION_EXTENSION_DIR") and os.environ.get("GITHUB_SHA"):
                 panel.evaluate("document.querySelector('[data-value=settings]').click()")
-                expect(panel.locator("main")).to_contain_text("0.6.0 Preview")
+                expect(panel.locator("main")).to_contain_text(f"{expected_version} Preview")
                 panel.get_by_text("Version details",exact=True).evaluate("el=>el.click()")
                 expect(panel.locator("main")).to_contain_text(os.environ["GITHUB_SHA"])
                 expect(panel.get_by_role("link",name="Check for updates")).to_have_attribute("rel","noopener noreferrer")
@@ -164,7 +167,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             with panel.expect_download() as dl:
                 panel.get_by_role("button",name="Export diagnostics").click()
             packet=json.loads(Path(dl.value.path()).read_text())
-            assert packet["provenance"]["exporter"]=={"distribution":"mv3","version":"0.6.0" if os.environ.get("COMPANION_EXTENSION_DIR") and os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA") if os.environ.get("COMPANION_EXTENSION_DIR") else None}
+            assert packet["provenance"]["exporter"]=={"distribution":"mv3","version":expected_version if os.environ.get("COMPANION_EXTENSION_DIR") and os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA") if os.environ.get("COMPANION_EXTENSION_DIR") else None}
             assert packet["provenance"]["snapshotTime"]=="first-observed" and packet["provenance"]["eventTime"]=="observation"
             assert packet["provenance"]["captureBuild"]=="unknown-or-mixed"
             assert packet["records"]==saved["records"] and packet["events"]==saved["events"]

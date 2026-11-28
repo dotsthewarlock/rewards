@@ -7,6 +7,7 @@ from claim_fixture import CODE, URL, success_fixture, assert_captured
 from queue_removal_fixture import ROWS, PREFIX, FAULT, seed, snapshot, assert_removed, hold_lock
 from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured, HIDDEN_BARCODE_FIXTURE, enter_hidden_barcode, inactive_barcode, hidden_final
 root=Path(__file__).resolve().parents[1]
+expected_version=json.loads((root/"extension/manifest.json").read_text())["version"]
 script=(root/".build/bookmarklet.js").read_text()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW"><main class="bcr-redemption"><form id="new_workflow_data"><div class="step step_active"><input class="wizard-serial-number" value="SYNTHETIC_SECRET"><button type="button">Get My Bonus</button></div></form></main><script>
 window.merchantActions=0;document.querySelector('form').addEventListener('click',()=>window.merchantActions++);
@@ -84,7 +85,7 @@ with sync_playwright() as p:
     with page.expect_download() as dl:
         host.get_by_role("button",name="Export diagnostics").click()
     packet=json.loads(Path(dl.value.path()).read_text())
-    assert packet["provenance"]["exporter"]=={"distribution":"bookmarklet","version":"0.6.0" if os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA")}
+    assert packet["provenance"]["exporter"]=={"distribution":"bookmarklet","version":expected_version if os.environ.get("GITHUB_SHA") else None,"commit":os.environ.get("GITHUB_SHA")}
     assert packet["provenance"]["snapshotTime"]=="current-observation" and packet["provenance"]["captureBuild"]=="current-exporter"
     assert packet["provenance"]["scope"]=="current-document" and packet["provenance"]["coverageComplete"] is False
     assert len(packet["records"])==1 and "events" not in packet
@@ -101,7 +102,7 @@ with sync_playwright() as p:
     host.get_by_role("button",name="Settings",exact=True).click()
     expect(host).to_contain_text("Background recording requires the extension")
     if os.environ.get("GITHUB_SHA"):
-        expect(host).to_contain_text("0.6.0 Preview")
+        expect(host).to_contain_text(f"{expected_version} Preview")
         host.get_by_text("Version details",exact=True).click()
         expect(host).to_contain_text(os.environ["GITHUB_SHA"])
         expect(host.get_by_role("link",name="Check for updates")).to_have_attribute("rel","noopener noreferrer")
