@@ -767,26 +767,35 @@
           // have an exact, directly preceding visible label in the same parent.
           // Neither DOM order nor credential length/format determines the role.
           const role=label=>Object.hasOwn(aliases,label.toUpperCase())?aliases[label.toUpperCase()]:null;
-          for(const marker of markers){
-            if(!successVisible(marker)||marker.parentElement.closest('.title,.text')||
-              marker.querySelector('.title,.text'))return fail('Ambiguous credential fields');
-            const raw=successText(marker,true,'');
-            const inline=raw.match(/^([^:]+):\s*([^:]+)$/);
-            let prior=marker.previousSibling;
-            while(prior&&(prior.nodeType===8||(prior.nodeType===3&&!norm(prior.nodeValue))))prior=prior.previousSibling;
-            let before='';
-            if(prior?.nodeType===3)before=norm(prior.nodeValue);
-            else if(prior?.nodeType===1&&!prior.matches('.title,.text')&&!prior.querySelector('.title,.text')){
-              if(!successVisible(prior))return fail('Ambiguous credential fields');
-              before=successText(prior,true,'');
+          const meaningful=node=>node.nodeType!==8&&(node.nodeType!==3||!!norm(node.nodeValue));
+          const labelNode=node=>{
+            if(node.nodeType===3)return norm(node.nodeValue);
+            if(node.nodeType!==1||!successVisible(node)||node.matches('.title,.text')||
+              node.querySelector('.title,.text'))return '';
+            return successText(node,true,'');
+          };
+          // Require a complete, unambiguous row sequence at each immediate
+          // marker parent: inline marker OR exact separate label + marker.
+          // Unpaired extra labels/content in that row are not authoritative.
+          for(const parent of new Set(markers.map(m=>m.parentElement))){
+            const nodes=[...parent.childNodes].filter(meaningful);
+            let label=null;
+            for(const node of nodes){
+              if(!markers.includes(node)){
+                const text=labelNode(node),separate=text.match(/^([^:]+):$/);
+                if(label||!separate||!(label=role(separate[1].trim())))return fail('Ambiguous credential fields');
+                continue;
+              }
+              if(!successVisible(node)||node.parentElement.closest('.title,.text')||
+                node.querySelector('.title,.text'))return fail('Ambiguous credential fields');
+              const raw=successText(node,true,''),inline=raw.match(/^([^:]+):\s*([^:]+)$/);
+              if(inline&&label)return fail('Ambiguous credential fields');
+              const key=inline?role(inline[1].trim()):label,value=norm(inline?inline[2]:raw);
+              if(!key||!value||value.includes(':')||Object.hasOwn(fields,key))return fail('Ambiguous credential fields');
+              fields[key]=value;
+              label=null;
             }
-            const separate=before.match(/^([^:]+):$/);
-            const beforeRole=separate?role(separate[1].trim()):null;
-            if(inline&&beforeRole)return fail('Ambiguous credential fields');
-            const key=inline?role(inline[1].trim()):beforeRole;
-            const value=norm(inline?inline[2]:raw);
-            if(!key||!value||value.includes(':')||Object.hasOwn(fields,key))return fail('Ambiguous credential fields');
-            fields[key]=value;
+            if(label)return fail('Ambiguous credential fields');
           }
         }else{
           let field=null,hasTitle=false;
