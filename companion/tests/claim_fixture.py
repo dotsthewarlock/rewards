@@ -56,11 +56,16 @@ def assert_captured(page, number="000012345678", pin="0000"):
     assert data["rewards"][0]["gcPin"] == pin
 
 def exercise_legacy_maintenance(playwright):
+    for version in ('15.1','15.2'):
+        _exercise_legacy_maintenance(playwright,version)
+
+def _exercise_legacy_maintenance(playwright,version):
     from pathlib import Path
     from hashlib import sha256
     import subprocess
     base=Path(__file__).resolve().parents[1]
-    source=base/"maintenance/Redeem_Prepaid_Rewards_v15.1.js"
+    source=base/f"maintenance/Redeem_Prepaid_Rewards_v{version}.js"
+    assert sha256((base/"maintenance/Redeem_Prepaid_Rewards_v15.1.js").read_bytes()).hexdigest()=="a4f4a98f047e33bd2eb1d9db575e63dd1fbad9839fbb1044e6c0d7f43049a798"
     data=source.read_bytes()
     baseline=base.parent/"redeem/Redeem_Prepaid_Rewards_v15.js"
     assert sha256(baseline.read_bytes()).hexdigest()=="23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"
@@ -96,7 +101,7 @@ for(const name of ['click','input','change','keydown','submit']) form.addEventLi
             page.evaluate("""([p,disabled])=>{const a=JSON.parse(localStorage.getItem(p+'active'));delete a.schema;delete a.attempt;localStorage.setItem(p+'active',JSON.stringify(a));document.querySelector('.btn-claim-another-code').disabled=disabled;}""",[prefix,disable])
         def run():
             page.evaluate(script)
-            page.wait_for_function("(p)=>window.__BS_REWARDS__?.version==='15.1'&&localStorage.getItem(p+'lock')===null",arg=prefix,timeout=12000)
+            page.wait_for_function("([p,v])=>window.__BS_REWARDS__?.version===v&&localStorage.getItem(p+'lock')===null",arg=[prefix,version],timeout=12000)
         def cache():
             return page.evaluate("""p=>Object.fromEntries(['giftcards','history','queue','active'].map(n=>[n,JSON.parse(localStorage.getItem(p+n)||'null')]))""",prefix)
         def stopped():
@@ -184,7 +189,67 @@ for(const name of ['click','input','change','keydown','submit']) form.addEventLi
             assert cache()==before
             assert_restart_stopped(before)
             recover_retained_confirmation()
-        print("Legacy v15.1 real synthetic bootstrap: flat/nested, exact strings, ambiguity, wrong/missing source, conflicts, all four thrown/ignored writes, exact retry and no advancement on failure PASS",flush=True)
-        print("Legacy v15.1 restart safety: parser/first reward throw/ignored write, retained fresh entry, missing submission markers, repeated invocation, zero actions/cache progression, alphanumeric linked confirmation recovery PASS",flush=True)
+        if version=="15.2":
+            # Screenshot establishes visible role labels, not their exact DOM
+            # placement. Test both explicit inline and adjacent same-row labels.
+            number,pin="00AB12CD34","00X9"
+            inline='<div class="text">Bonus Code : <a>'+number+'</a></div><div class="text">PIN : <a>'+pin+'</a></div>'
+            adjacent='<div><span>Bonus Code :</span><div class="text">'+number+'</div></div><div>PIN : <div class="text">'+pin+'</div></div>'
+            reverse='<div class="text">PIN : '+pin+'</div><div class="text">Bonus Code : '+number+'</div>'
+            for fields in (inline,adjacent,reverse):
+                setup(fields,disable=True)
+                run()
+                assert_captured(page,number,pin)
+                run()
+                assert_captured(page,number,pin)
+            for fields in (
+                '<div class="text">'+number+'</div><div class="text">'+pin+'</div>',
+                '<div class="text">'+pin+'</div><div class="text">'+number+'</div>',
+                inline.replace('PIN :','Card Number :'),
+                inline.replace('PIN :','Other :'),
+                inline.replace('PIN :',''),
+                inline.replace('PIN :','PIN : Bonus Code :'),
+                inline.replace('Bonus Code :','<span hidden>Bonus Code :</span>'),
+                inline.replace(number,'00AB<span hidden>12CD34</span>'),
+                inline.replace('<div class="text">PIN','<div class="text" hidden>PIN'),
+                adjacent.replace('<span>Bonus Code :</span>','<span hidden>Bonus Code :</span>'),
+                adjacent.replace('<span>Bonus Code :</span>','<span>Other :</span>'),
+                adjacent.replace('<span>Bonus Code :</span>','<span>Bonus Code :</span><span>Other</span>'),
+                adjacent.replace('<span>Bonus Code :</span>','<span>PIN :</span><span>Bonus Code :</span>'),
+                adjacent.replace('</div></div><div>PIN','</div><span>PIN :</span></div><div>PIN'),
+                inline.replace('<div class="text">Bonus Code','<span>PIN :</span><div class="text">Bonus Code'),
+                adjacent.replace(number,'PIN : '+number),
+                inline+'<div class="text">Unrelated</div>',
+                inline.replace('<div class="text">PIN','<div class="title text">PIN'),
+                inline.replace(number,'<span class="text">'+number+'</span>'),
+            ):
+                setup(fields)
+                before=cache()
+                run()
+                assert cache()==before
+                stopped()
+            # Preserve exact result linkage and restart safety for new layout.
+            setup(inline,eligible=OTHER)
+            before=cache()
+            run()
+            assert cache()==before
+            stopped()
+            for mode in ("throw","ignore"):
+                setup(inline)
+                page.evaluate("""([p,mode])=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k===p+'giftcards'){if(mode==='throw')throw Error('synthetic quota');return;}return set.call(this,k,v);}}""",[prefix,mode])
+                before=cache()
+                run()
+                assert cache()==before
+                stopped()
+                assert_restart_stopped(before)
+                page.goto(retained_url)
+                page.locator("#eligible").evaluate("(el,code)=>el.textContent='Eligible Card: '+code",CODE)
+                page.locator(".codes-container").evaluate("(el,html)=>el.innerHTML=html",inline)
+                page.locator(".btn-claim-another-code").evaluate("el=>el.disabled=true")
+                run()
+                assert_captured(page,number,pin)
+            print("Legacy v15.2 explicit text-only labels: inline, adjacent, reversed roles, ambiguity, hidden fields, identity and fresh-document fault recovery PASS",flush=True)
+        print(f"Legacy v{version} real synthetic bootstrap: flat/nested, exact strings, ambiguity, wrong/missing source, conflicts, all four thrown/ignored writes, exact retry and no advancement on failure PASS",flush=True)
+        print(f"Legacy v{version} restart safety: parser/first reward throw/ignored write, retained fresh entry, missing submission markers, repeated invocation, zero actions/cache progression, alphanumeric linked confirmation recovery PASS",flush=True)
     finally:
         browser.close()
