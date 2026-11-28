@@ -4,7 +4,7 @@ import os
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
-from queue_removal_fixture import ROWS, SAFE, HISTORY, GIFTS, PREFIX, FAULT, seed, snapshot, assert_removed, hold_lock, isolated_world, fault_in_world
+from queue_removal_fixture import ROWS, FAULT, seed, snapshot as queue_snapshot, assert_removed, hold_lock, isolated_world, fault_in_world
 from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
 root=Path(os.environ.get("COMPANION_EXTENSION_DIR",Path(__file__).resolve().parents[1]/"extension")).resolve()
 fixture="""<!doctype html><html><body data-slug="CA1126VANW">
@@ -273,15 +273,15 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             assert ROWS[1]["code"] not in json.dumps(state["details"])
             one=preview_removal(1,state)
             assert one["ok"] and one["rows"]==[{"index":1,"last4":"0001"}] and one["retained"]==len(ROWS)-1,one
-            assert snapshot(page)==before
+            assert queue_snapshot(page)==before
             assert not confirm(t,one,False)["ok"]
             assert command(t,"cancelRemoval",{"token":one["token"]})=={"ok":True}
-            assert not confirm(t,one)["ok"] and snapshot(page)==before
+            assert not confirm(t,one)["ok"] and queue_snapshot(page)==before
             one=preview_removal(1)
             assert confirm(t,one)=={"ok":True,"removed":1}
             assert_removed(page,before,[1])
             assert not confirm(t,one)["ok"]
-            before=snapshot(page)
+            before=queue_snapshot(page)
             bulk=preview_removal()
             assert bulk["rows"]==[{"index":0,"last4":"0001"},{"index":1,"last4":"0003"}],bulk
             assert confirm(t,bulk)=={"ok":True,"removed":2}
@@ -292,21 +292,21 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
             state=inspect_removal()
             one=preview_removal(1,state)
             changed=seed(page,[ROWS[1],ROWS[0],*ROWS[2:]])
-            assert not confirm(t,one)["ok"] and snapshot(page)==changed
-            assert not preview_removal(1,state)["ok"] and snapshot(page)==changed
+            assert not confirm(t,one)["ok"] and queue_snapshot(page)==changed
+            assert not preview_removal(1,state)["ok"] and queue_snapshot(page)==changed
             before=seed(page)
             one=preview_removal(1)
             stale=dict(t,documentToken="00000000-0000-0000-0000-000000000000")
-            assert not confirm(stale,one)["ok"] and snapshot(page)==before
+            assert not confirm(stale,one)["ok"] and queue_snapshot(page)==before
             assert command(t,"cancelRemoval",{"token":one["token"]})=={"ok":True}
             # Real page-world lock competes with the extension's isolated world.
             one=preview_removal(1)
             hold_lock(page)
             assert confirm(t,one)=={"ok":False,"reason":"edit-busy"}
-            assert snapshot(page)==before
+            assert queue_snapshot(page)==before
             page.evaluate("window.releaseQueueLock()")
             page.wait_for_timeout(100)
-            assert not confirm(t,one)["ok"] and snapshot(page)==before
+            assert not confirm(t,one)["ok"] and queue_snapshot(page)==before
             # Fault-inject only the exact loaded extension content world.
             cdp, world=isolated_world(ctx,page)
             try:
@@ -316,7 +316,7 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
                     fault_in_world(cdp,world,"("+FAULT+")("+json.dumps(mode)+")")
                     try:
                         assert confirm(t,one)=={"ok":False,"reason":"edit-outcome-unknown"}
-                        assert snapshot(page)==before
+                        assert queue_snapshot(page)==before
                         assert not confirm(t,one)["ok"]
                     finally:
                         fault_in_world(cdp,world,"globalThis.restoreQueueWrite()")
@@ -333,12 +333,12 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
                 state=inspect_removal()
                 assert state["details"]["queueBlock"]==reason,state
                 assert not preview_removal(None,state)["ok"]
-                assert state["recovery"] is None and snapshot(page)==before
+                assert state["recovery"] is None and queue_snapshot(page)==before
             before=seed(page)
             state=inspect_removal()
             one=preview_removal(1,state)
             page.locator("main.bcr-redemption").evaluate("el=>el.replaceWith(el.cloneNode(true))")
-            assert not confirm(state["target"],one)["ok"] and snapshot(page)==before
+            assert not confirm(state["target"],one)["ok"] and queue_snapshot(page)==before
             assert inspect_removal()["target"]["documentToken"]!=state["target"]["documentToken"]
             assert page.evaluate("window.clicks===0")
             print("Packaged MV3 queue removal: trusted sender, exact single/bulk, cancellation, stale selection/document, linked retention, ownership, write/readback uncertainty, masked unresolved blocking PASS",flush=True)
