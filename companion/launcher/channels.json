@@ -6,10 +6,10 @@
     "sha256": "23bceac57b1d72ea1e8c452ae51ac665e0db1e8a967156be5b320ec6895d62b1"
   },
   "dev": {
-    "version": "0.6.0-dev-de3cb5d39410",
-    "path": "companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-bookmarklet.js",
-    "sha256": "895c9b38f9954b1604a455816ae3fee9e9e20ce39cf50d726fe9b8cbfecb81ec",
-    "package": "companion/launcher/releases/0.6.0-dev-de3cb5d39410/rewards-companion-0.6.0-dev-de3cb5d39410-development.zip",
-    "packageSha256": "0d698b40f7b32f26261865243d4bdb68ab70b6214a33f17dddfd87eeda3badec"
+    "version": "0.6.0-dev-7c03bfac2b2f",
+    "path": "companion/launcher/releases/0.6.0-dev-7c03bfac2b2f/rewards-companion-0.6.0-dev-7c03bfac2b2f-bookmarklet.js",
+    "sha256": "c34a51432a8e025b1ad2dece3f4b74f79452e8cdd908101a1f6f6b862818b687",
+    "package": "companion/launcher/releases/0.6.0-dev-7c03bfac2b2f/rewards-companion-0.6.0-dev-7c03bfac2b2f-development.zip",
+    "packageSha256": "aff793ca4856e81b005d87002fc887bb829e68d5fa1329d3280e4644a832b1f5"
   }
 }
