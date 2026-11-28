@@ -1,8 +1,10 @@
 """Exercise the generated shared workspace on a synthetic page, never a merchant."""
 from pathlib import Path
 import os
+import json
 from playwright.sync_api import sync_playwright, expect
 from claim_fixture import CODE, URL, success_fixture, assert_captured
+from queue_removal_fixture import ROWS, PREFIX, FAULT, seed, snapshot, assert_removed, hold_lock
 from foreground_fixture import URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured
 root=Path(__file__).resolve().parents[1]
 script=(root/".build/bookmarklet.js").read_text()
@@ -25,6 +27,9 @@ with sync_playwright() as p:
     host=page.locator("#rewards-companion-dev")
     expect(host).to_contain_text("Legacy cache management")
     expect(host).to_contain_text("1 pending")
+    expect(host).to_contain_text("Absence of confirmation does not prove failure")
+    expect(host.get_by_role("button",name="Review safe removals")).to_have_count(0)
+    expect(host.get_by_role("button",name="Capture matching reward")).to_have_count(0)
     expect(host).to_contain_text("•••• 0001")
     ctx.grant_permissions(["clipboard-read","clipboard-write"],origin="https://getmybonus.ca")
     page.evaluate("navigator.clipboard.writeText('Receipt: 000000000000000000000000000001\\n012345678901234567890123456789')")
@@ -101,6 +106,111 @@ with sync_playwright() as p:
     expect(host.locator("#announcement")).to_contain_text("Preference saved")
     assert page.evaluate("localStorage.getItem('bs_rewards:CA1126VANW:email')")=="fixture@example.invalid"
     assert page.evaluate("window.merchantActions===0 && !localStorage.getItem('bs_rewards:CA1126VANW:active')")
+    # The actual generated bookmarklet, real trusted user clicks and keyboard.
+    def refresh_queue():
+        host.get_by_role("button",name="Refresh connection").click()
+    def review_entry(index, suffix):
+        host.get_by_role("button",name=f"Review removal of queue entry {index+1} ending {suffix}").click()
+        expect(host).to_contain_text("Confirm queue removal")
+    def review_bulk():
+        host.get_by_role("button",name="Review safe removals").click()
+        expect(host).to_contain_text("Confirm queue removal")
+    def confirm_remove():
+        host.get_by_role("button",name="Confirm removal").click()
+    before=seed(page)
+    host.get_by_role("button",name="Queue",exact=True).click()
+    refresh_queue()
+    expect(host.get_by_role("button",name="Review safe removals")).to_be_visible()
+    # Same last four digits but exact position. Keyboard activation and explicit cancellation.
+    entry=host.get_by_role("button",name="Review removal of queue entry 2 ending 0001")
+    entry.focus()
+    page.keyboard.press("Enter")
+    expect(host).to_contain_text("Confirm queue removal")
+    expect(host).to_contain_text("Entry 2")
+    expect(host).not_to_contain_text(ROWS[1]["code"])
+    expect(host).not_to_contain_text("PRIVATE_FIXTURE_CARD")
+    assert snapshot(page)==before
+    cancel=host.get_by_role("button",name="Cancel removal")
+    cancel.focus()
+    page.keyboard.press("Enter")
+    expect(host.locator("#announcement")).to_contain_text("Removal cancelled")
+    expect(host.get_by_role("button",name="Confirm removal")).to_have_count(0)
+    assert snapshot(page)==before
+    assert host.locator("#workspace").evaluate("el=>el.getRootNode().activeElement===el")
+    review_entry(1,"0001")
+    confirm_remove()
+    expect(host.locator("#announcement")).to_contain_text("1 queue entry removed")
+    assert_removed(page,before,[1])
+    before=snapshot(page)
+    review_bulk()
+    expect(host).to_contain_text("Remove 2 reviewed unused queue entries")
+    expect(host).to_contain_text("8 other entries will stay")
+    confirm_remove()
+    expect(host.locator("#announcement")).to_contain_text("2 queue entries removed")
+    assert_removed(page,before,[0,1])
+    host.get_by_role("button",name="Review safe removals").click()
+    expect(host.locator("#announcement")).to_contain_text("No demonstrably unused entries")
+    # Review is fenced against exact raw storage changes, even same suffix.
+    before=seed(page)
+    refresh_queue()
+    review_entry(1,"0001")
+    changed=seed(page,[ROWS[1],ROWS[0],*ROWS[2:]])
+    confirm_remove()
+    expect(host.locator("#announcement")).to_contain_text("Selection expired")
+    assert snapshot(page)==changed
+    # The displayed selection snapshot is stale before opening review.
+    before=seed(page)
+    host.get_by_role("button",name="Review removal of queue entry 2 ending 0001").click()
+    expect(host.locator("#announcement")).to_contain_text("Selection expired")
+    assert snapshot(page)==before
+    refresh_queue()
+    review_entry(1,"0001")
+    hold_lock(page)
+    confirm_remove()
+    expect(host.locator("#announcement")).to_contain_text("Another companion edit")
+    assert snapshot(page)==before
+    page.evaluate("window.releaseQueueLock()")
+    page.wait_for_timeout(100)
+    for mode in ("throw","readback"):
+        refresh_queue()
+        review_entry(1,"0001")
+        page.evaluate(FAULT,mode)
+        try:
+            confirm_remove()
+            expect(host.locator("#announcement")).to_contain_text("Save outcome uncertain")
+            assert snapshot(page)==before
+            expect(host.get_by_role("button",name="Confirm removal")).to_have_count(0)
+        finally:
+            page.evaluate("globalThis.restoreQueueWrite()")
+    for opts,message in [
+        ({"rows":[dict(ROWS[0],state="pending"),*ROWS[1:]]},"A pending queue record"),
+        ({"rows":[dict(ROWS[0],state="processing"),*ROWS[1:]]},"A processing queue record"),
+        ({"active":{"id":ROWS[0]["id"],"phase":"submitted","code":ROWS[0]["code"]}},"An active attempt record"),
+        ({"lock":{"owner":"legacy-fixture"}},"A stored lock"),
+        ({"gifts":[{"gcNumber":"UNKNOWN_LINK"}]},"source links cannot be safely interpreted"),
+    ]:
+        before=seed(page,**opts)
+        refresh_queue()
+        expect(host).to_contain_text(message)
+        expect(host.get_by_role("button",name="Review safe removals")).to_have_count(0)
+        expect(host.get_by_role("button",name="Capture matching reward")).to_have_count(0)
+        expect(host).not_to_contain_text(ROWS[0]["code"])
+        assert snapshot(page)==before
+    before=seed(page)
+    refresh_queue()
+    review_entry(1,"0001")
+    page.locator("main.bcr-redemption").evaluate("el=>el.replaceWith(el.cloneNode(true))")
+    confirm_remove()
+    expect(host.locator("#announcement")).to_contain_text("Campaign changed")
+    assert snapshot(page)==before
+    refresh_queue()
+    review_bulk()
+    for width in (320,360,480):
+        page.set_viewport_size({"width":width,"height":800})
+        assert host.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
+    host.get_by_role("button",name="Cancel removal").click()
+    assert snapshot(page)==before and page.evaluate("window.merchantActions===0")
+    print("Packaged bookmarklet queue removal: real click/keyboard, exact single/bulk, cancel, stale selection/document, linked retention, ownership, write/readback uncertainty, privacy and responsive unresolved guidance PASS",flush=True)
     page.evaluate(script)
     expect(host).to_have_count(0)
     ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()))

@@ -103,7 +103,7 @@
   const sameRaw=(a,b)=>removalNames.every(k=>a[k]===b[k]);
   const occupied=value=>value!==null&&value!=='null';
   const shaHash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
-  const knownHash=value=>shaHash(value)||typeof value==='string'&&/^fallback_[a-f0-9]{1,8}_\d{30}$/.test(value);
+  const knownHash=value=>shaHash(value)||typeof value==='string'&&/^fallback_[a-f0-9]{1,8}_\d{30}$/.test(value)&&legacyFallback(value.slice(-30))===value;
   function queueSnapshot(storage,slug,scope,raw){
     let entry=queueSnapshots.get(storage);
     if(!entry||entry.slug!==slug||entry.scope!==scope||!sameRaw(entry.raw,raw)){
@@ -129,7 +129,7 @@
     return row.state==='queued'&&row.note===''&&barcode(row.code)&&
       (selectionToken(row.id)||typeof row.id==='string'&&/^\d{1,16}_[a-z0-9]{1,32}$/.test(row.id))&&
       Object.keys(row).length===freshFields.length&&freshFields.every(k=>Object.hasOwn(row,k))&&
-      Number.isSafeInteger(row.created)&&row.created>=0&&Number.isSafeInteger(row.updated)&&row.updated>=row.created;
+      Number.isSafeInteger(row.created)&&row.created>=0&&Number.isSafeInteger(row.updated)&&row.updated===row.created;
   }
   async function eligibleRemoval(queue,history,gifts,index){
     const rows=[];
@@ -162,7 +162,7 @@
         value:typeof r.valueRecent==='string'&&/^\d{1,7}\.\d{2}$/.test(r.valueRecent)?r.valueRecent:null
       }));
       return {ok:true,queue,history,rewards,rewardSnapshot:rewardSnapshot(storage,slug,raw),queueSnapshot:queueSnapshot(storage,slug,scope,evidence),queueBlock:removalBlock(evidence,queueRows,historyRows,giftRows)};
-    }catch{return {ok:false,reason:'unreadable-cache'};}
+    }catch{queueSnapshots.delete(storage);removalReviews.delete(storage);return {ok:false,reason:'unreadable-cache'};}
   }
   function validateDetails(input){
     const suffix=x=>x===null||(typeof x==='string'&&/^\d{4}$/.test(x));

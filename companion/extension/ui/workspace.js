@@ -13,7 +13,7 @@ const marker=root.querySelector('header[data-build-commit]');
 const version=marker?.dataset.buildVersion,commit=marker?.dataset.buildCommit;
 const build=/^\d+\.\d+\.\d+$/.test(version||'')&&/^[a-f0-9]{40}$/.test(commit||'')?
   Object.freeze({version,commit,distribution:recording?'Chrome extension':'Bookmarklet'}):null;
-let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null,removal=null;
+let screen='queue',state=null,serial=0,draft='',preview=null,page=0,historyPage=0,rewardPage=0,browseTab='cards',browseSearch='',inputVersion=0,emailDraft='',editing=false,reviewed=null,removal=null,removalEpoch=0;
 let catalog=null,catalogBusy=false,catalogError=false;
 let revealedReward=null,revealEpoch=0,revealTimer=null;
 function hideReward(){revealEpoch++;clearTimeout(revealTimer);revealTimer=null;const shown=!!revealedReward;revealedReward=null;return shown;}
@@ -39,7 +39,7 @@ function cancelRemovalReview(old){
  if(old)Promise.resolve(request('editCache',{target:old.target,edit:'cancelRemoval',value:{token:old.token}})).catch(()=>{});
 }
 function discardRemoval(){
- const old=removal;removal=null;cancelRemovalReview(old);
+ removalEpoch++;const old=removal;removal=null;cancelRemovalReview(old);
 }
 async function loadCatalog(refreshPublic=false){
  if(!recording||catalogBusy)return;
@@ -111,12 +111,12 @@ root.addEventListener('click',async e=>{
  if(target.dataset.action==='browseTab'){hideReward();browseTab=target.dataset.value;browseSearch='';rewardPage=0;historyPage=0;render();}
  if(target.dataset.action==='reviewRemoval'){
    if(!e.isTrusted||editing||removal||reviewed||screen!=='queue'||!state?.target||state.summary?.unresolved||state.details?.queueBlock!==null)return;
-   const selected=state.target,snapshot=state.details.queueSnapshot,n=serial;
+   const selected=state.target,snapshot=state.details.queueSnapshot,n=serial,epoch=++removalEpoch;
    const index=target.dataset.value==='all'?null:Number(target.dataset.value);
    editing=true;render();
    let result;try{result=await request('editCache',{target:selected,edit:'previewRemoval',value:{snapshot,index}});}catch{}
    editing=false;
-   if(!alive()||n!==serial||screen!=='queue'||!sameTarget(selected,state?.target)||snapshot!==state?.details?.queueSnapshot){
+   if(!alive()||document.hidden||epoch!==removalEpoch||n!==serial||screen!=='queue'||!sameTarget(selected,state?.target)||snapshot!==state?.details?.queueSnapshot){
      if(result?.ok)cancelRemovalReview({...result,target:selected});
      if(alive())render();return;
    }

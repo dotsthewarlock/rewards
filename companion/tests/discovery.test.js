@@ -243,3 +243,19 @@ test('queue removal rechecks after review and reports uncertain write/readback w
  assert.equal((await L.editCache(s,testLock,slug,'removeQueue',{token:selected.token,confirmed:false},()=>true,'scope')).reason,'invalid-input');
  assert.equal(s.writes,0);
 });
+
+test('removal retains modified timestamps, rejects inconsistent legacy fallback evidence and revokes corrupt reviews',async()=>{
+ const changed={...freshRow(1),updated:101};
+ const s=removalStore([changed,freshRow(2)]);
+ const r=await reviewRemoval(s);
+ assert.deepEqual(r.rows,[{index:1,last4:'0002'}]);
+ const original=s.map.get(L.key(slug,'queue'));
+ s.map.set(L.key(slug,'queue'),'broken');
+ assert.equal(L.details(s,slug,'scope').ok,false);
+ s.map.set(L.key(slug,'queue'),original);
+ assert.equal((await confirmRemoval(s,r)).reason,'stale-selection');
+ s.map.set(L.key(slug,'history'),JSON.stringify([{h:'fallback_0_'+removalCode(2)}]));
+ assert.equal(L.details(s,slug,'scope').queueBlock,'ambiguous');
+ assert.equal((await reviewRemoval(s)).reason,'removal-not-safe');
+ assert.equal(s.writes,0);
+});
