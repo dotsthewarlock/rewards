@@ -2,6 +2,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
+from claim_fixture import exercise_legacy_maintenance
 
 root = Path(__file__).resolve().parents[1] / "extension"
 with TemporaryDirectory() as profile, sync_playwright() as p:
@@ -101,3 +102,4 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         print("production-facing workspace contains no demo claim controls PASS",flush=True)
     finally:
         ctx.close()
+    exercise_legacy_maintenance(p)

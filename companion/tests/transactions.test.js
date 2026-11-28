@@ -138,3 +138,11 @@ test('two overlapping owners cannot both enter the same durable attempt',async()
  assert.deepEqual(a,{ok:true,status:'pending'});assert.equal(b.reason,'busy');assert.equal(calls,1);
  assert.equal(read(s,'active').attempt.attemptId,review.attemptId);assert.equal(read(s,'queue')[1].state,'queued');
 });
+
+test('reverse history gift link to a different source blocks capture before writes',async()=>{
+ const s=store();await start(s);
+ s.map.set(key('history'),JSON.stringify([{code:other,giftKey:'000012345678|0000'}]));
+ const before=[...s.map];
+ assert.equal((await reconcile(s)).reason,'history-conflict');
+ assert.deepEqual([...s.map],before);
+});

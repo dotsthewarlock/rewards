@@ -5,7 +5,7 @@
   'use strict';
   const D=globalThis.RewardsDiscovery,L=globalThis.RewardsLegacy;
   const norm=s=>typeof s==='string'?s.replace(/\s+/g,' ').trim():'';
-  const visibleText=el=>{
+  const visibleText=(el,strict=false,join=' ')=>{
     if(!D.visible(el))return '';
     const walker=el.ownerDocument.createTreeWalker(el,4);
     const parts=[];
@@ -13,8 +13,9 @@
     while((node=walker.nextNode())){
       if(++n>3000)throw Error('text-limit');
       if(D.visible(node.parentElement))parts.push(node.nodeValue);
+      else if(strict)throw Error('hidden-field-text');
     }
-    return norm(parts.join(' '));
+    return norm(parts.join(join));
   };
   const fail=reason=>({ok:false,reason});
   const aliases=Object.freeze({'BONUS CODE':'number','GIFT CARD NUMBER':'number','CARD NUMBER':'number','CODE':'number','PIN':'pin','GIFT CARD PIN':'pin','CARD PIN':'pin'});
@@ -27,24 +28,38 @@
       if(roots.length!==1)return fail('ambiguous-confirmation');
       const root=roots[0],containers=[...root.querySelectorAll('.codes-container')].filter(D.visible);
       if(containers.length!==1)return fail('ambiguous-fields');
-      const fields={},children=[...containers[0].children];
-      for(let i=0;i<children.length;i++){
-        const label=children[i];
-        if(!label.classList.contains('title')||!D.visible(label))continue;
-        const field=aliases[visibleText(label).replace(/:$/,'').toUpperCase()];
-        if(!field)continue;
-        if(Object.hasOwn(fields,field))return fail('ambiguous-fields');
-        let value='';
-        for(let j=i+1;j<children.length;j++){
-          if(children[j].classList.contains('title'))break;
-          if(children[j].classList.contains('text')&&D.visible(children[j])){value=visibleText(children[j]);break;}
+      // Descendant order supports both flat and wrapped label/value layouts.
+      // Every title is a boundary, including unknown labels; never borrow a
+      // value across it or accept multiple/nested/hidden credential markers.
+      const fields={};
+      let field=null,hasTitle=false;
+      for(const marker of containers[0].querySelectorAll('.title,.text')){
+        if(!D.visible(marker)||marker.parentElement.closest('.title,.text')||
+          marker.classList.contains('title')===marker.classList.contains('text'))return fail('ambiguous-fields');
+        if(marker.classList.contains('title')){
+          hasTitle=true;
+          const label=visibleText(marker,true).replace(/:$/,'').trim().toUpperCase();
+          if(!label)return fail('ambiguous-fields');
+          field=Object.hasOwn(aliases,label)?aliases[label]:null;
+          if(field){
+            if(Object.hasOwn(fields,field))return fail('ambiguous-fields');
+            fields[field]='';
+          }
+        }else{
+          if(!hasTitle)return fail('ambiguous-fields');
+          if(!field)continue;
+          if(fields[field])return fail('ambiguous-fields');
+          const value=visibleText(marker,true,'');
+          if(!value)return fail('incomplete-reward');
+          fields[field]=value;
         }
-        fields[field]=value;
       }
       const form=root.closest('.redemption-form');
       const context=form&&id.root.contains(form)?form:id.root;
-      const matches=[...visibleText(context).matchAll(/\bEligible\s+Card\s*:\s*(\d{30})\b/gi)].map(m=>m[1]);
-      if(matches.length!==1||matches[0]!==expectedCode)return fail('eligible-card-mismatch');
+      const contextText=visibleText(context);
+      const labels=[...contextText.matchAll(/\bEligible\s+Card\s*:/gi)];
+      const matches=[...contextText.matchAll(/\bEligible\s+Card\s*:\s*(\d{30})\b/gi)].map(m=>m[1]);
+      if(labels.length!==1||matches.length!==1||matches[0]!==expectedCode)return fail('eligible-card-mismatch');
       const product=visibleText(root.querySelector('.h5'));
       const cardMerchant=product.replace(/\s+E?GIFT\s*CARD.*$/i,'').trim()||norm(doc.body?.dataset?.project);
       const amounts=[...visibleText(root.querySelector('h3')).matchAll(/\$\s*(\d+(?:\.\d{1,2})?)(?![\d.])/g)];

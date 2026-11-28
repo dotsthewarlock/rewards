@@ -4,7 +4,7 @@ import os
 import json
 from tempfile import TemporaryDirectory
 from playwright.sync_api import sync_playwright, expect
-from claim_fixture import CODE, URL, success_fixture, assert_captured
+from claim_fixture import CODE, URL, success_fixture, assert_captured, FLAT, NESTED, BAD_FIELDS
 from queue_removal_fixture import ROWS, FAULT, seed, snapshot as queue_snapshot, assert_removed, hold_lock, isolated_world, fault_in_world
 from foreground_fixture import exercise_final, URL as FINAL_URL, FIXTURE as FINAL_FIXTURE, WORKFLOW_FIXTURE, show_linked_success, assert_final_captured, HIDDEN_BARCODE_FIXTURE, enter_hidden_barcode, inactive_barcode, hidden_final
 source=Path(__file__).resolve().parents[1]/"extension"
@@ -451,9 +451,19 @@ with TemporaryDirectory() as profile, sync_playwright() as p:
         assert "000012345678" not in json.dumps(page.evaluate("RewardsDiscovery.report(document)"))
         page.locator(".codes-container").evaluate("el=>el.insertAdjacentHTML('beforeend','<div class=title>Card PIN</div><div class=text>1234</div>')")
         assert not page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)["ok"]
-        print("candidate v15 success parsing, exact eligible linkage, hidden and ambiguous fields PASS",flush=True)
+        for layout in (FLAT,NESTED):
+            page.locator(".codes-container").evaluate("(el,html)=>el.innerHTML=html",layout)
+            assert page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)==captured
+        for name,layout in BAD_FIELDS.items():
+            page.locator(".codes-container").evaluate("(el,html)=>el.innerHTML=html",layout)
+            assert not page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)["ok"],name
+        page.locator(".codes-container").evaluate("(el,html)=>el.innerHTML=html",NESTED)
+        for text in ("Eligible Card:", "Eligible Card: "+success_code+" Eligible Card:"):
+            page.locator(".redemption-form p").first.evaluate("(el,text)=>el.textContent=text",text)
+            assert not page.evaluate("code=>RewardsSuccess.readSuccess(document,code)",success_code)["ok"]
+        print("candidate shared success parsing: flat/nested, exact eligible linkage, hidden/missing/ambiguous fields PASS",flush=True)
         # Real extension transport, synthetic durable intent. No merchant clicks.
-        ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture()))
+        ctx.route(URL,lambda route:route.fulfill(status=200,content_type="text/html",body=success_fixture(nested=True)))
         page.goto(URL)
         page.bring_to_front()
         recovered=worker.evaluate("""async id=>{for(let i=0;i<50;i++){const r=await inspectTab(id);if(r.report?.stage==='success'&&r.target)return r;await new Promise(r=>setTimeout(r,100));}throw Error('no success target')}""",tab)
